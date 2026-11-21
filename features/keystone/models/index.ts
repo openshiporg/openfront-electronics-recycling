@@ -1,17 +1,17 @@
-import { User } from './User';
-import { Role } from './Role';
-import { Todo } from './Todo';
-import { TodoImage } from './TodoImage';
-import { OAuthApp } from './OAuthApp';
-import { OAuthToken } from './OAuthToken';
+import { peopleLists } from './people'
+import { buySideLists } from './buySide'
+import { sellSideLists } from './sellSide'
+import { moneyLists } from './money'
+import { OAuthApp } from './OAuthApp'
+import { OAuthToken } from './OAuthToken'
 
 export const models = {
-  User,
-  Role,
-  Todo,
-  TodoImage,
+  ...peopleLists,
+  ...buySideLists,
+  ...sellSideLists,
+  ...moneyLists,
   OAuthApp,
   OAuthToken,
-};
+}
 
-export default models;
+export default models

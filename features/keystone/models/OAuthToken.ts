@@ -14,10 +14,10 @@ const digestTokenInput = {
 export const OAuthToken = list({
   access: {
     operation: {
-      query: permissions.canManagePeople,
-      create: permissions.canManagePeople,
-      update: permissions.canManagePeople,
-      delete: permissions.canManagePeople,
+      query: permissions.canManageUsers,
+      create: permissions.canManageUsers,
+      update: permissions.canManageUsers,
+      delete: permissions.canManageUsers,
     },
   },
   fields: {

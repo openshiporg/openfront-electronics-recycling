@@ -1,27 +1,24 @@
 import { createAuth } from "@keystone-6/auth";
 import { config } from "@keystone-6/core";
 import "dotenv/config";
+import { createHash } from "node:crypto";
 import { models } from "./models";
 import { statelessSessions } from "@keystone-6/core/session";
 import { extendGraphqlSchema } from "./mutations";
 import { sendPasswordResetEmail } from "./lib/mail";
 import { withMcpBearerSessions } from "./mcp-oauth/session";
+import { ROLE_PERMISSIONS, SESSION_DATA } from "./access";
 
 const databaseURL = process.env.DATABASE_URL || "file:./keystone.db";
 
+// SESSION_SECRET should be set on every deployment. Without it the secret is derived
+// from the database address, so sign-in still works and stays stable across restarts.
 const sessionConfig = {
-  maxAge: 60 * 60 * 24 * 360, // How long they stay signed in?
+  maxAge: 60 * 60 * 24 * 360,
   secret:
-    process.env.SESSION_SECRET || "this secret should only be used in testing",
+    process.env.SESSION_SECRET ||
+    createHash("sha256").update(`openfront-electronics-recycling:${databaseURL}`).digest("hex"),
 };
-
-const {
-  S3_BUCKET_NAME: bucketName = "keystone-test",
-  S3_REGION: region = "ap-southeast-2",
-  S3_ACCESS_KEY_ID: accessKeyId = "keystone",
-  S3_SECRET_ACCESS_KEY: secretAccessKey = "keystone",
-  S3_ENDPOINT: endpoint = "https://sfo3.digitaloceanspaces.com",
-} = process.env;
 
 const { withAuth } = createAuth({
   listKey: "User",
@@ -30,16 +27,11 @@ const { withAuth } = createAuth({
   initFirstItem: {
     fields: ["name", "email", "password"],
     itemData: {
+      kind: "staff",
       role: {
         create: {
-          name: "Admin",
-          canCreateTodos: true,
-          canManageAllTodos: true,
-          canSeeOtherPeople: true,
-          canEditOtherPeople: true,
-          canManagePeople: true,
-          canManageRoles: true,
-          canAccessDashboard: true,
+          name: "Owner",
+          ...Object.fromEntries(ROLE_PERMISSIONS.map((permission) => [permission, true])),
         },
       },
     },
@@ -50,21 +42,7 @@ const { withAuth } = createAuth({
       await sendPasswordResetEmail(args.token, args.identity);
     },
   },
-  sessionData: `
-    name
-    email
-    role {
-      id
-      name
-      canCreateTodos
-      canManageAllTodos
-      canSeeOtherPeople
-      canEditOtherPeople
-      canManagePeople
-      canManageRoles
-      canAccessDashboard
-    }
-  `,
+  sessionData: SESSION_DATA,
 });
 
 export default withAuth(
@@ -74,19 +52,6 @@ export default withAuth(
       url: databaseURL,
     },
     lists: models,
-    storage: {
-      my_images: {
-        kind: "s3",
-        type: "image",
-        bucketName,
-        region,
-        accessKeyId,
-        secretAccessKey,
-        endpoint,
-        signed: { expiry: 5000 },
-        forcePathStyle: true,
-      },
-    },
     ui: {
       isAccessAllowed: ({ session }) => session?.data.role?.canAccessDashboard ?? false,
     },

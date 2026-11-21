@@ -12,72 +12,1536 @@ generator client {
 }
 
 model User {
-  id                      String       @id @default(cuid())
-  name                    String       @default("")
-  email                   String       @unique @default("")
-  password                String
-  role                    Role?        @relation("User_role", fields: [roleId], references: [id])
-  roleId                  String?      @map("role")
-  tasks                   Todo[]       @relation("Todo_assignedTo")
-  passwordResetToken      String?
-  passwordResetIssuedAt   DateTime?
-  passwordResetRedeemedAt DateTime?
-  from_OAuthToken_user    OAuthToken[] @relation("OAuthToken_user")
+  id                                     String                    @id @default(cuid())
+  name                                   String                    @default("")
+  email                                  String                    @unique @default("")
+  password                               String
+  phone                                  String                    @default("")
+  role                                   Role?                     @relation("User_role", fields: [roleId], references: [id])
+  roleId                                 String?                   @map("role")
+  kind                                   UserKindType              @default(staff)
+  buyerCompany                           BuyerCompany?             @relation("User_buyerCompany", fields: [buyerCompanyId], references: [id])
+  buyerCompanyId                         String?                   @map("buyerCompany")
+  buyerRole                              UserBuyerRoleType?
+  clientOrganization                     ClientOrganization?       @relation("User_clientOrganization", fields: [clientOrganizationId], references: [id])
+  clientOrganizationId                   String?                   @map("clientOrganization")
+  clientRole                             UserClientRoleType?
+  isActive                               Boolean                   @default(true)
+  acceptedTermsVersion                   String                    @default("")
+  acceptedTermsAt                        DateTime?
+  notificationPrefs                      Json?                     @default("{}")
+  onboardingStatus                       UserOnboardingStatusType? @default(not_started)
+  passwordResetToken                     String?
+  passwordResetIssuedAt                  DateTime?
+  passwordResetRedeemedAt                DateTime?
+  createdAt                              DateTime                  @default(now())
+  updatedAt                              DateTime                  @default(now()) @updatedAt
+  from_StoredFile_uploadedBy             StoredFile[]              @relation("StoredFile_uploadedBy")
+  from_ClientOrganization_accountManager ClientOrganization[]      @relation("ClientOrganization_accountManager")
+  from_Job_requestedBy                   Job[]                     @relation("Job_requestedBy")
+  from_Job_quoteAcceptedBy               Job[]                     @relation("Job_quoteAcceptedBy")
+  from_Job_driver                        Job[]                     @relation("Job_driver")
+  from_CustodyEvent_actor                CustodyEvent[]            @relation("CustodyEvent_actor")
+  from_Asset_auditedBy                   Asset[]                   @relation("Asset_auditedBy")
+  from_SanitizationRecord_operator       SanitizationRecord[]      @relation("SanitizationRecord_operator")
+  from_SanitizationRecord_verifiedBy     SanitizationRecord[]      @relation("SanitizationRecord_verifiedBy")
+  from_ErasureImport_uploadedBy          ErasureImport[]           @relation("ErasureImport_uploadedBy")
+  from_Certificate_issuedBy              Certificate[]             @relation("Certificate_issuedBy")
+  from_Settlement_disputeRecordedBy      Settlement[]              @relation("Settlement_disputeRecordedBy")
+  from_BuyerCompany_approvedBy           BuyerCompany[]            @relation("BuyerCompany_approvedBy")
+  from_BuyerDocument_uploadedBy          BuyerDocument[]           @relation("BuyerDocument_uploadedBy")
+  from_BuyerMessage_author               BuyerMessage[]            @relation("BuyerMessage_author")
+  from_LotAddendum_postedBy              LotAddendum[]             @relation("LotAddendum_postedBy")
+  from_ManifestImport_uploadedBy         ManifestImport[]          @relation("ManifestImport_uploadedBy")
+  from_Bid_placedBy                      Bid[]                     @relation("Bid_placedBy")
+  from_Award_awardedBy                   Award[]                   @relation("Award_awardedBy")
+  from_Order_releasedBy                  Order[]                   @relation("Order_releasedBy")
+  from_Claim_openedBy                    Claim[]                   @relation("Claim_openedBy")
+  from_Claim_resolvedBy                  Claim[]                   @relation("Claim_resolvedBy")
+  from_PaymentSession_createdBy          PaymentSession[]          @relation("PaymentSession_createdBy")
+  from_Payment_reportedBy                Payment[]                 @relation("Payment_reportedBy")
+  from_Payment_confirmedBy               Payment[]                 @relation("Payment_confirmedBy")
+  from_Refund_createdBy                  Refund[]                  @relation("Refund_createdBy")
+  from_Notification_user                 Notification[]            @relation("Notification_user")
+  from_AuditEvent_actor                  AuditEvent[]              @relation("AuditEvent_actor")
+  from_OAuthToken_user                   OAuthToken[]              @relation("OAuthToken_user")
 
   @@index([roleId])
+  @@index([buyerCompanyId])
+  @@index([clientOrganizationId])
 }
 
 model Role {
-  id                 String  @id @default(cuid())
-  name               String  @default("")
-  canCreateTodos     Boolean @default(false)
-  canManageAllTodos  Boolean @default(false)
-  canSeeOtherPeople  Boolean @default(false)
-  canEditOtherPeople Boolean @default(false)
-  canManagePeople    Boolean @default(false)
-  canManageRoles     Boolean @default(false)
-  canAccessDashboard Boolean @default(false)
-  assignedTo         User[]  @relation("User_role")
+  id                                String   @id @default(cuid())
+  name                              String   @unique @default("")
+  canAccessDashboard                Boolean  @default(false)
+  canManageSettings                 Boolean  @default(false)
+  canManageUsers                    Boolean  @default(false)
+  canManageBuyers                   Boolean  @default(false)
+  canManageLots                     Boolean  @default(false)
+  canAwardLots                      Boolean  @default(false)
+  canSeeSealedBidAmountsBeforeClose Boolean  @default(false)
+  canManageClients                  Boolean  @default(false)
+  canManageJobs                     Boolean  @default(false)
+  canDispatch                       Boolean  @default(false)
+  canCollect                        Boolean  @default(false)
+  canReceive                        Boolean  @default(false)
+  canAuditAssets                    Boolean  @default(false)
+  canSanitize                       Boolean  @default(false)
+  canVerifySanitization             Boolean  @default(false)
+  canIssueCertificates              Boolean  @default(false)
+  canManageDownstream               Boolean  @default(false)
+  canManagePayments                 Boolean  @default(false)
+  canRefund                         Boolean  @default(false)
+  canManageSettlements              Boolean  @default(false)
+  canViewReports                    Boolean  @default(false)
+  canManageOnboarding               Boolean  @default(false)
+  assignedTo                        User[]   @relation("User_role")
+  createdAt                         DateTime @default(now())
+  updatedAt                         DateTime @default(now()) @updatedAt
 }
 
-model Todo {
-  id                   String      @id @default(cuid())
-  label                String      @default("")
-  description          Json        @default("[{\"type\":\"paragraph\",\"children\":[{\"text\":\"\"}]}]")
-  isComplete           Boolean     @default(false)
-  status               String?     @default("todo")
-  priority             Int?        @default(1)
-  tags                 Json        @default("[]")
-  dueDate              DateTime?
-  weight               Float?      @default(1)
-  budget               Decimal?    @default("0.00") @postgresql.Decimal(10, 2)
-  isPrivate            Boolean     @default(false)
-  largeNumber          BigInt?
-  metadata             Json?
-  secretNote           String?
-  coverImage_id        String?
-  coverImage_filesize  Int?
-  coverImage_width     Int?
-  coverImage_height    Int?
-  coverImage_extension String?
-  todoImages           TodoImage[] @relation("Todo_todoImages")
-  assignedTo           User?       @relation("Todo_assignedTo", fields: [assignedToId], references: [id])
-  assignedToId         String?     @map("assignedTo")
+model StoreSettings {
+  id                                Int                                  @id
+  businessName                      String                               @default("Electronics Recycling")
+  legalName                         String                               @default("")
+  logo                              StoredFile?                          @relation("StoreSettings_logo", fields: [logoId], references: [id])
+  logoId                            String?                              @map("logo")
+  tagline                           String                               @default("")
+  supportEmail                      String                               @default("")
+  supportPhone                      String                               @default("")
+  timezone                          String                               @default("America/New_York")
+  currencyCode                      String                               @default("USD")
+  weightUnit                        StoreSettingsWeightUnitType          @default(lb)
+  publicLotVisibility               StoreSettingsPublicLotVisibilityType @default(teaser)
+  defaultBidFormat                  StoreSettingsDefaultBidFormatType    @default(sealed_bid)
+  defaultBidBasis                   StoreSettingsDefaultBidBasisType     @default(lot_total)
+  defaultAwardMode                  StoreSettingsDefaultAwardModeType    @default(manual)
+  softCloseWindowMinutes            Int                                  @default(3)
+  softCloseExtensionMinutes         Int                                  @default(3)
+  softCloseMaxExtensions            Int                                  @default(20)
+  bidValidityBusinessDays           Int                                  @default(3)
+  buyerPremiumBps                   Int                                  @default(0)
+  salesTaxBps                       Int                                  @default(0)
+  cardFeeBps                        Int                                  @default(300)
+  cardMaxAmountMinor                Int?
+  paymentDueBusinessDays            Int                                  @default(2)
+  paymentGraceBusinessDays          Int                                  @default(2)
+  restockingFeeBps                  Int                                  @default(1500)
+  strikesBeforeSuspension           Int                                  @default(3)
+  removalBusinessDays               Int                                  @default(5)
+  storageFeePerPalletPerDayMinor    Int                                  @default(2000)
+  claimWindowBusinessDays           Int                                  @default(5)
+  claimVarianceBps                  Int                                  @default(500)
+  defaultClientRevenueShareBps      Int                                  @default(7000)
+  sanitizationVerificationSampleBps Int                                  @default(500)
+  wireInstructions                  String                               @default("")
+  wholesaleTerms                    Json                                 @default("[{\"type\":\"paragraph\",\"children\":[{\"text\":\"\"}]}]")
+  wholesaleTermsVersion             String                               @default("1")
+  serviceTerms                      Json                                 @default("[{\"type\":\"paragraph\",\"children\":[{\"text\":\"\"}]}]")
+  serviceTermsVersion               String                               @default("1")
+  exportClause                      String                               @default("")
+  smtpHost                          String                               @default("")
+  smtpPort                          Int?
+  smtpUser                          String                               @default("")
+  smtpPassword                      String                               @default("")
+  smtpFrom                          String                               @default("")
+  storefrontUrl                     String                               @default("")
+  createdAt                         DateTime                             @default(now())
+  updatedAt                         DateTime                             @default(now()) @updatedAt
 
-  @@index([assignedToId])
+  @@index([logoId])
 }
 
-model TodoImage {
-  id              String  @id @default(cuid())
-  image_id        String?
-  image_filesize  Int?
-  image_width     Int?
-  image_height    Int?
-  image_extension String?
-  imagePath       String  @default("")
-  altText         String  @default("")
-  todos           Todo[]  @relation("Todo_todoImages")
-  metadata        Json?
+model Facility {
+  id                             String             @id @default(cuid())
+  name                           String             @default("")
+  code                           String             @unique @default("")
+  addressLine1                   String             @default("")
+  addressLine2                   String             @default("")
+  city                           String             @default("")
+  region                         String             @default("")
+  postalCode                     String             @default("")
+  countryCode                    String             @default("US")
+  phone                          String             @default("")
+  hours                          Json?              @default("{}")
+  acceptsDropOff                 Boolean            @default(true)
+  dockSlotMinutes                Int                @default(30)
+  dockSlotsPerWindow             Int                @default(2)
+  pickupInstructions             String             @default("")
+  isActive                       Boolean            @default(true)
+  createdAt                      DateTime           @default(now())
+  updatedAt                      DateTime           @default(now()) @updatedAt
+  from_Certification_facility    Certification[]    @relation("Certification_facility")
+  from_Job_facility              Job[]              @relation("Job_facility")
+  from_CustodyEvent_facility     CustodyEvent[]     @relation("CustodyEvent_facility")
+  from_OutboundShipment_facility OutboundShipment[] @relation("OutboundShipment_facility")
+  from_Lot_facility              Lot[]              @relation("Lot_facility")
+  from_DockAppointment_facility  DockAppointment[]  @relation("DockAppointment_facility")
+}
+
+model Certification {
+  id                String      @id @default(cuid())
+  name              String      @default("R2v3")
+  otherName         String      @default("")
+  certificateNumber String      @default("")
+  certifyingBody    String      @default("")
+  facility          Facility?   @relation("Certification_facility", fields: [facilityId], references: [id])
+  facilityId        String?     @map("facility")
+  issuedOn          DateTime?   @postgresql.Date
+  expiresOn         DateTime?   @postgresql.Date
+  document          StoredFile? @relation("Certification_document", fields: [documentId], references: [id])
+  documentId        String?     @map("document")
+  isPublic          Boolean     @default(true)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @default(now()) @updatedAt
+
+  @@index([facilityId])
+  @@index([documentId])
+}
+
+model MaterialCategory {
+  id                                       String                   @id @default(cuid())
+  name                                     String                   @default("")
+  slug                                     String                   @unique @default("")
+  kind                                     MaterialCategoryKindType @default(equipment)
+  parent                                   MaterialCategory?        @relation("MaterialCategory_parent", fields: [parentId], references: [id])
+  parentId                                 String?                  @map("parent")
+  children                                 MaterialCategory[]       @relation("MaterialCategory_parent")
+  r2Category                               String                   @default("")
+  isFocusMaterial                          Boolean                  @default(false)
+  dataBearingDefault                       Boolean                  @default(false)
+  sortOrder                                Int?                     @default(0)
+  isActive                                 Boolean                  @default(true)
+  createdAt                                DateTime                 @default(now())
+  updatedAt                                DateTime                 @default(now()) @updatedAt
+  from_AcceptedItem_category               AcceptedItem[]           @relation("AcceptedItem_category")
+  from_JobEstimateLine_category            JobEstimateLine[]        @relation("JobEstimateLine_category")
+  from_Asset_category                      Asset[]                  @relation("Asset_category")
+  from_CommodityLine_category              CommodityLine[]          @relation("CommodityLine_category")
+  from_DownstreamVendor_approvedCategories DownstreamVendor[]       @relation("DownstreamVendor_approvedCategories")
+  from_OutboundShipmentLine_category       OutboundShipmentLine[]   @relation("OutboundShipmentLine_category")
+  from_BuyerCompany_categoriesOfInterest   BuyerCompany[]           @relation("BuyerCompany_categoriesOfInterest")
+  from_Lot_category                        Lot[]                    @relation("Lot_category")
+  from_LotLine_category                    LotLine[]                @relation("LotLine_category")
+
+  @@index([parentId])
+}
+
+model GradeDefinition {
+  id                         String                  @id @default(cuid())
+  kind                       GradeDefinitionKindType @default(cosmetic)
+  code                       String                  @default("")
+  label                      String                  @default("")
+  description                String                  @default("")
+  sortOrder                  Int?                    @default(0)
+  createdAt                  DateTime                @default(now())
+  updatedAt                  DateTime                @default(now()) @updatedAt
+  from_Asset_cosmeticGrade   Asset[]                 @relation("Asset_cosmeticGrade")
+  from_Asset_functionalGrade Asset[]                 @relation("Asset_functionalGrade")
+}
+
+model AcceptedItem {
+  id         String                  @id @default(cuid())
+  name       String                  @default("")
+  category   MaterialCategory?       @relation("AcceptedItem_category", fields: [categoryId], references: [id])
+  categoryId String?                 @map("category")
+  accepted   Boolean                 @default(true)
+  feeType    AcceptedItemFeeTypeType @default(free)
+  feeMinor   Int                     @default(0)
+  notes      String                  @default("")
+  sortOrder  Int?                    @default(0)
+  createdAt  DateTime                @default(now())
+  updatedAt  DateTime                @default(now()) @updatedAt
+
+  @@index([categoryId])
+}
+
+model StoredFile {
+  id                                     String                   @id @default(cuid())
+  filename                               String                   @default("")
+  mimeType                               String                   @default("")
+  sizeBytes                              Int
+  sha256                                 String                   @default("")
+  purpose                                String                   @default("")
+  visibility                             StoredFileVisibilityType @default(private)
+  ownerBuyerCompanyId                    String                   @default("")
+  ownerClientOrganizationId              String                   @default("")
+  uploadedBy                             User?                    @relation("StoredFile_uploadedBy", fields: [uploadedById], references: [id])
+  uploadedById                           String?                  @map("uploadedBy")
+  data                                   String                   @default("") @postgresql.Text
+  createdAt                              DateTime                 @default(now())
+  updatedAt                              DateTime                 @default(now()) @updatedAt
+  from_StoreSettings_logo                StoreSettings[]          @relation("StoreSettings_logo")
+  from_Certification_document            Certification[]          @relation("Certification_document")
+  from_Job_clientSignature               Job[]                    @relation("Job_clientSignature")
+  from_JobPhoto_image                    JobPhoto[]               @relation("JobPhoto_image")
+  from_CustodyEvent_signature            CustodyEvent[]           @relation("CustodyEvent_signature")
+  from_AssetPhoto_image                  AssetPhoto[]             @relation("AssetPhoto_image")
+  from_SanitizationRecord_reportFile     SanitizationRecord[]     @relation("SanitizationRecord_reportFile")
+  from_ErasureImport_file                ErasureImport[]          @relation("ErasureImport_file")
+  from_Certificate_pdf                   Certificate[]            @relation("Certificate_pdf")
+  from_Settlement_pdf                    Settlement[]             @relation("Settlement_pdf")
+  from_DownstreamVendor_dueDiligenceFile DownstreamVendor[]       @relation("DownstreamVendor_dueDiligenceFile")
+  from_OutboundShipment_receiptDocument  OutboundShipment[]       @relation("OutboundShipment_receiptDocument")
+  from_BuyerDocument_file                BuyerDocument[]          @relation("BuyerDocument_file")
+  from_LotImage_image                    LotImage[]               @relation("LotImage_image")
+  from_ManifestImport_file               ManifestImport[]         @relation("ManifestImport_file")
+  from_Bid_sheetFile                     Bid[]                    @relation("Bid_sheetFile")
+  from_Order_driverSignature             Order[]                  @relation("Order_driverSignature")
+  from_ClaimPhoto_image                  ClaimPhoto[]             @relation("ClaimPhoto_image")
+  from_Invoice_pdf                       Invoice[]                @relation("Invoice_pdf")
+
+  @@index([uploadedById])
+}
+
+model ClientOrganization {
+  id                            String                                    @id @default(cuid())
+  name                          String                                    @default("")
+  legalName                     String                                    @default("")
+  industry                      String                                    @default("")
+  billingEmail                  String                                    @default("")
+  addressLine1                  String                                    @default("")
+  addressLine2                  String                                    @default("")
+  city                          String                                    @default("")
+  region                        String                                    @default("")
+  postalCode                    String                                    @default("")
+  countryCode                   String                                    @default("US")
+  taxId                         String                                    @default("")
+  status                        ClientOrganizationStatusType              @default(prospect)
+  defaultPricingModel           ClientOrganizationDefaultPricingModelType @default(fee_for_service)
+  defaultRevenueShareBps        Int?
+  accountManager                User?                                     @relation("ClientOrganization_accountManager", fields: [accountManagerId], references: [id])
+  accountManagerId              String?                                   @map("accountManager")
+  users                         User[]                                    @relation("User_clientOrganization")
+  sites                         ClientSite[]                              @relation("ClientSite_organization")
+  jobs                          Job[]                                     @relation("Job_organization")
+  invoices                      Invoice[]                                 @relation("Invoice_clientOrganization")
+  notes                         String                                    @default("")
+  createdAt                     DateTime                                  @default(now())
+  updatedAt                     DateTime                                  @default(now()) @updatedAt
+  from_Asset_organization       Asset[]                                   @relation("Asset_organization")
+  from_Certificate_organization Certificate[]                             @relation("Certificate_organization")
+  from_Settlement_organization  Settlement[]                              @relation("Settlement_organization")
+
+  @@index([accountManagerId])
+}
+
+model ClientSite {
+  id             String              @id @default(cuid())
+  organization   ClientOrganization? @relation("ClientSite_organization", fields: [organizationId], references: [id])
+  organizationId String?             @map("organization")
+  name           String              @default("")
+  addressLine1   String              @default("")
+  addressLine2   String              @default("")
+  city           String              @default("")
+  region         String              @default("")
+  postalCode     String              @default("")
+  countryCode    String              @default("US")
+  contactName    String              @default("")
+  contactPhone   String              @default("")
+  hasDock        Boolean             @default(false)
+  needsLiftgate  Boolean             @default(false)
+  accessNotes    String              @default("")
+  hours          String              @default("")
+  jobs           Job[]               @relation("Job_site")
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @default(now()) @updatedAt
+
+  @@index([organizationId])
+}
+
+model Job {
+  id                            String               @id @default(cuid())
+  jobNumber                     String?              @unique
+  type                          JobTypeType          @default(pickup)
+  status                        JobStatusType        @default(requested)
+  holdFromStatus                String               @default("")
+  organization                  ClientOrganization?  @relation("Job_organization", fields: [organizationId], references: [id])
+  organizationId                String?              @map("organization")
+  site                          ClientSite?          @relation("Job_site", fields: [siteId], references: [id])
+  siteId                        String?              @map("site")
+  facility                      Facility?            @relation("Job_facility", fields: [facilityId], references: [id])
+  facilityId                    String?              @map("facility")
+  requestedBy                   User?                @relation("Job_requestedBy", fields: [requestedById], references: [id])
+  requestedById                 String?              @map("requestedBy")
+  contactName                   String               @default("")
+  contactEmail                  String               @default("")
+  contactPhone                  String               @default("")
+  siteAddress                   Json?
+  accessDetails                 Json?                @default("{}")
+  requestedDates                Json?                @default("[]")
+  hasDataBearing                Boolean              @default(false)
+  servicesRequested             Json?                @default("[]")
+  estimateLines                 JobEstimateLine[]    @relation("JobEstimateLine_job")
+  photos                        JobPhoto[]           @relation("JobPhoto_job")
+  pricingModel                  JobPricingModelType?
+  revenueShareBps               Int?
+  buyoutAmountMinor             Int?
+  serviceLines                  JobServiceLine[]     @relation("JobServiceLine_job")
+  quoteSentAt                   DateTime?
+  quoteAcceptedAt               DateTime?
+  quoteAcceptedBy               User?                @relation("Job_quoteAcceptedBy", fields: [quoteAcceptedById], references: [id])
+  quoteAcceptedById             String?              @map("quoteAcceptedBy")
+  quoteSignatureName            String               @default("")
+  quoteTermsVersion             String               @default("")
+  declineReason                 String               @default("")
+  cancelReason                  String               @default("")
+  scheduledDate                 DateTime?            @postgresql.Date
+  windowStart                   String               @default("")
+  windowEnd                     String               @default("")
+  driver                        User?                @relation("Job_driver", fields: [driverId], references: [id])
+  driverId                      String?              @map("driver")
+  vehicle                       String               @default("")
+  collectedAt                   DateTime?
+  clientSignerName              String               @default("")
+  clientSignature               StoredFile?          @relation("Job_clientSignature", fields: [clientSignatureId], references: [id])
+  clientSignatureId             String?              @map("clientSignature")
+  receivedAt                    DateTime?
+  completedAt                   DateTime?
+  containers                    Container[]          @relation("Container_job")
+  assets                        Asset[]              @relation("Asset_job")
+  commodityLines                CommodityLine[]      @relation("CommodityLine_job")
+  custodyEvents                 CustodyEvent[]       @relation("CustodyEvent_job")
+  certificates                  Certificate[]        @relation("Certificate_job")
+  settlement                    Settlement?          @relation("Job_settlement", fields: [settlementId], references: [id])
+  settlementId                  String?              @unique @map("settlement")
+  invoices                      Invoice[]            @relation("Invoice_job")
+  dockAppointments              DockAppointment[]    @relation("DockAppointment_job")
+  internalNotes                 String               @default("")
+  createdAt                     DateTime             @default(now())
+  updatedAt                     DateTime             @default(now()) @updatedAt
+  from_ManifestImport_targetJob ManifestImport[]     @relation("ManifestImport_targetJob")
+
+  @@index([organizationId])
+  @@index([siteId])
+  @@index([facilityId])
+  @@index([requestedById])
+  @@index([quoteAcceptedById])
+  @@index([driverId])
+  @@index([clientSignatureId])
+}
+
+model JobEstimateLine {
+  id         String                  @id @default(cuid())
+  job        Job?                    @relation("JobEstimateLine_job", fields: [jobId], references: [id])
+  jobId      String?                 @map("job")
+  category   MaterialCategory?       @relation("JobEstimateLine_category", fields: [categoryId], references: [id])
+  categoryId String?                 @map("category")
+  quantity   Int?                    @default(1)
+  unit       JobEstimateLineUnitType @default(units)
+  notes      String                  @default("")
+  createdAt  DateTime                @default(now())
+  updatedAt  DateTime                @default(now()) @updatedAt
+
+  @@index([jobId])
+  @@index([categoryId])
+}
+
+model JobServiceLine {
+  id             String                 @id @default(cuid())
+  job            Job?                   @relation("JobServiceLine_job", fields: [jobId], references: [id])
+  jobId          String?                @map("job")
+  description    String                 @default("")
+  quantity       Decimal                @default("1") @postgresql.Decimal(12, 3)
+  unitPriceMinor Int                    @default(0)
+  totalMinor     Int?                   @default(0)
+  kind           JobServiceLineKindType @default(other)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @default(now()) @updatedAt
+
+  @@index([jobId])
+}
+
+model JobPhoto {
+  id        String            @id @default(cuid())
+  job       Job?              @relation("JobPhoto_job", fields: [jobId], references: [id])
+  jobId     String?           @map("job")
+  image     StoredFile?       @relation("JobPhoto_image", fields: [imageId], references: [id])
+  imageId   String?           @map("image")
+  caption   String            @default("")
+  stage     JobPhotoStageType @default(request)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @default(now()) @updatedAt
+
+  @@index([jobId])
+  @@index([imageId])
+}
+
+model Container {
+  id                      String              @id @default(cuid())
+  job                     Job?                @relation("Container_job", fields: [jobId], references: [id])
+  jobId                   String?             @map("job")
+  label                   String              @unique @default("")
+  type                    ContainerTypeType   @default(pallet)
+  sealNumber              String              @default("")
+  receivedSealNumber      String              @default("")
+  sealVerified            Boolean             @default(false)
+  sealException           String              @default("")
+  sealExceptionResolution String              @default("")
+  itemCountDeclared       Int?
+  grossWeight             Decimal?            @postgresql.Decimal(12, 2)
+  tareWeight              Decimal?            @postgresql.Decimal(12, 2)
+  status                  ContainerStatusType @default(collected)
+  locationCode            String              @default("")
+  assets                  Asset[]             @relation("Asset_container")
+  custodyEvents           CustodyEvent[]      @relation("CustodyEvent_container")
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @default(now()) @updatedAt
+
+  @@index([jobId])
+}
+
+model CustodyEvent {
+  id           String               @id @default(cuid())
+  job          Job?                 @relation("CustodyEvent_job", fields: [jobId], references: [id])
+  jobId        String?              @map("job")
+  container    Container?           @relation("CustodyEvent_container", fields: [containerId], references: [id])
+  containerId  String?              @map("container")
+  asset        Asset?               @relation("CustodyEvent_asset", fields: [assetId], references: [id])
+  assetId      String?              @map("asset")
+  type         CustodyEventTypeType @default(moved)
+  actor        User?                @relation("CustodyEvent_actor", fields: [actorId], references: [id])
+  actorId      String?              @map("actor")
+  actorName    String               @default("")
+  occurredAt   DateTime             @default(now())
+  facility     Facility?            @relation("CustodyEvent_facility", fields: [facilityId], references: [id])
+  facilityId   String?              @map("facility")
+  locationText String               @default("")
+  signerName   String               @default("")
+  signature    StoredFile?          @relation("CustodyEvent_signature", fields: [signatureId], references: [id])
+  signatureId  String?              @map("signature")
+  notes        String               @default("")
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @default(now()) @updatedAt
+
+  @@index([jobId])
+  @@index([containerId])
+  @@index([assetId])
+  @@index([actorId])
+  @@index([facilityId])
+  @@index([signatureId])
+}
+
+model Asset {
+  id                        String                      @id @default(cuid())
+  assetNumber               String?                     @unique
+  job                       Job?                        @relation("Asset_job", fields: [jobId], references: [id])
+  jobId                     String?                     @map("job")
+  container                 Container?                  @relation("Asset_container", fields: [containerId], references: [id])
+  containerId               String?                     @map("container")
+  organization              ClientOrganization?         @relation("Asset_organization", fields: [organizationId], references: [id])
+  organizationId            String?                     @map("organization")
+  parent                    Asset?                      @relation("Asset_parent", fields: [parentId], references: [id])
+  parentId                  String?                     @map("parent")
+  children                  Asset[]                     @relation("Asset_parent")
+  category                  MaterialCategory?           @relation("Asset_category", fields: [categoryId], references: [id])
+  categoryId                String?                     @map("category")
+  manufacturer              String                      @default("")
+  model                     String                      @default("")
+  partNumber                String                      @default("")
+  serialNumber              String                      @default("")
+  clientAssetTag            String                      @default("")
+  specs                     Json?                       @default("{}")
+  isDataBearing             Boolean                     @default(false)
+  cosmeticGrade             GradeDefinition?            @relation("Asset_cosmeticGrade", fields: [cosmeticGradeId], references: [id])
+  cosmeticGradeId           String?                     @map("cosmeticGrade")
+  functionalGrade           GradeDefinition?            @relation("Asset_functionalGrade", fields: [functionalGradeId], references: [id])
+  functionalGradeId         String?                     @map("functionalGrade")
+  testNotes                 String                      @default("")
+  weight                    Decimal?                    @postgresql.Decimal(12, 2)
+  photos                    AssetPhoto[]                @relation("AssetPhoto_asset")
+  status                    AssetStatusType             @default(received)
+  holdFromStatus            String                      @default("")
+  sanitizationStatus        AssetSanitizationStatusType @default(not_required)
+  disposition               AssetDispositionType        @default(undecided)
+  holdReason                String                      @default("")
+  storageRemoved            Boolean                     @default(false)
+  fairMarketValueMinor      Int?
+  lotLine                   LotLine?                    @relation("Asset_lotLine", fields: [lotLineId], references: [id])
+  lotLineId                 String?                     @map("lotLine")
+  soldPriceMinor            Int?
+  outboundLine              OutboundShipmentLine?       @relation("Asset_outboundLine", fields: [outboundLineId], references: [id])
+  outboundLineId            String?                     @map("outboundLine")
+  sanitizationRecords       SanitizationRecord[]        @relation("SanitizationRecord_asset")
+  custodyEvents             CustodyEvent[]              @relation("CustodyEvent_asset")
+  locationCode              String                      @default("")
+  auditedBy                 User?                       @relation("Asset_auditedBy", fields: [auditedById], references: [id])
+  auditedById               String?                     @map("auditedBy")
+  auditedAt                 DateTime?
+  createdAt                 DateTime                    @default(now())
+  updatedAt                 DateTime                    @default(now()) @updatedAt
+  from_SettlementLine_asset SettlementLine[]            @relation("SettlementLine_asset")
+
+  @@index([jobId])
+  @@index([containerId])
+  @@index([organizationId])
+  @@index([parentId])
+  @@index([categoryId])
+  @@index([serialNumber])
+  @@index([clientAssetTag])
+  @@index([cosmeticGradeId])
+  @@index([functionalGradeId])
+  @@index([lotLineId])
+  @@index([outboundLineId])
+  @@index([auditedById])
+}
+
+model AssetPhoto {
+  id        String      @id @default(cuid())
+  asset     Asset?      @relation("AssetPhoto_asset", fields: [assetId], references: [id])
+  assetId   String?     @map("asset")
+  image     StoredFile? @relation("AssetPhoto_image", fields: [imageId], references: [id])
+  imageId   String?     @map("image")
+  caption   String      @default("")
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @default(now()) @updatedAt
+
+  @@index([assetId])
+  @@index([imageId])
+}
+
+model SanitizationRecord {
+  id               String                          @id @default(cuid())
+  asset            Asset?                          @relation("SanitizationRecord_asset", fields: [assetId], references: [id])
+  assetId          String?                         @map("asset")
+  method           SanitizationRecordMethodType    @default(purge)
+  technique        SanitizationRecordTechniqueType @default(overwrite)
+  standard         String                          @default("NIST SP 800-88")
+  tool             String                          @default("")
+  toolVersion      String                          @default("")
+  reportReference  String                          @default("")
+  reportFile       StoredFile?                     @relation("SanitizationRecord_reportFile", fields: [reportFileId], references: [id])
+  reportFileId     String?                         @map("reportFile")
+  startedAt        DateTime?
+  completedAt      DateTime?
+  result           SanitizationRecordResultType    @default(passed)
+  failureReason    String                          @default("")
+  operator         User?                           @relation("SanitizationRecord_operator", fields: [operatorId], references: [id])
+  operatorId       String?                         @map("operator")
+  verifiedBy       User?                           @relation("SanitizationRecord_verifiedBy", fields: [verifiedById], references: [id])
+  verifiedById     String?                         @map("verifiedBy")
+  verifiedAt       DateTime?
+  verificationNote String                          @default("")
+  witnessName      String                          @default("")
+  importBatch      ErasureImport?                  @relation("SanitizationRecord_importBatch", fields: [importBatchId], references: [id])
+  importBatchId    String?                         @map("importBatch")
+  createdAt        DateTime                        @default(now())
+  updatedAt        DateTime                        @default(now()) @updatedAt
+
+  @@index([assetId])
+  @@index([reportFileId])
+  @@index([operatorId])
+  @@index([verifiedById])
+  @@index([importBatchId])
+}
+
+model ErasureImport {
+  id               String                  @id @default(cuid())
+  file             StoredFile?             @relation("ErasureImport_file", fields: [fileId], references: [id])
+  fileId           String?                 @map("file")
+  originalFilename String                  @default("")
+  tool             String                  @default("")
+  status           ErasureImportStatusType @default(uploaded)
+  rowCount         Int?                    @default(0)
+  matchedCount     Int?                    @default(0)
+  unmatched        Json?                   @default("[]")
+  rows             Json?                   @default("[]")
+  records          SanitizationRecord[]    @relation("SanitizationRecord_importBatch")
+  uploadedBy       User?                   @relation("ErasureImport_uploadedBy", fields: [uploadedById], references: [id])
+  uploadedById     String?                 @map("uploadedBy")
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @default(now()) @updatedAt
+
+  @@index([fileId])
+  @@index([uploadedById])
+}
+
+model CommodityLine {
+  id             String                @id @default(cuid())
+  job            Job?                  @relation("CommodityLine_job", fields: [jobId], references: [id])
+  jobId          String?               @map("job")
+  category       MaterialCategory?     @relation("CommodityLine_category", fields: [categoryId], references: [id])
+  categoryId     String?               @map("category")
+  weight         Decimal               @default("0") @postgresql.Decimal(12, 2)
+  notes          String                @default("")
+  outboundLine   OutboundShipmentLine? @relation("CommodityLine_outboundLine", fields: [outboundLineId], references: [id])
+  outboundLineId String?               @map("outboundLine")
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @default(now()) @updatedAt
+
+  @@index([jobId])
+  @@index([categoryId])
+  @@index([outboundLineId])
+}
+
+model Certificate {
+  id                        String                @id @default(cuid())
+  certificateNumber         String?               @unique
+  type                      CertificateTypeType   @default(data_destruction)
+  job                       Job?                  @relation("Certificate_job", fields: [jobId], references: [id])
+  jobId                     String?               @map("job")
+  organization              ClientOrganization?   @relation("Certificate_organization", fields: [organizationId], references: [id])
+  organizationId            String?               @map("organization")
+  issuedAt                  DateTime?
+  issuedBy                  User?                 @relation("Certificate_issuedBy", fields: [issuedById], references: [id])
+  issuedById                String?               @map("issuedBy")
+  verificationCode          String?               @unique
+  snapshot                  Json?
+  pdf                       StoredFile?           @relation("Certificate_pdf", fields: [pdfId], references: [id])
+  pdfId                     String?               @map("pdf")
+  status                    CertificateStatusType @default(issued)
+  revokedReason             String                @default("")
+  revokedAt                 DateTime?
+  replaces                  Certificate?          @relation("Certificate_replaces", fields: [replacesId], references: [id])
+  replacesId                String?               @map("replaces")
+  createdAt                 DateTime              @default(now())
+  updatedAt                 DateTime              @default(now()) @updatedAt
+  from_Certificate_replaces Certificate[]         @relation("Certificate_replaces")
+
+  @@index([jobId])
+  @@index([organizationId])
+  @@index([issuedById])
+  @@index([pdfId])
+  @@index([replacesId])
+}
+
+model Settlement {
+  id                    String                      @id @default(cuid())
+  settlementNumber      String?                     @unique
+  job                   Job?                        @relation("Job_settlement")
+  organization          ClientOrganization?         @relation("Settlement_organization", fields: [organizationId], references: [id])
+  organizationId        String?                     @map("organization")
+  status                SettlementStatusType        @default(draft)
+  lines                 SettlementLine[]            @relation("SettlementLine_settlement")
+  feesTotalMinor        Int?                        @default(0)
+  clientShareTotalMinor Int?                        @default(0)
+  netMinor              Int?                        @default(0)
+  publishedAt           DateTime?
+  disputeNote           String                      @default("")
+  disputeRecordedBy     User?                       @relation("Settlement_disputeRecordedBy", fields: [disputeRecordedById], references: [id])
+  disputeRecordedById   String?                     @map("disputeRecordedBy")
+  invoice               Invoice?                    @relation("Invoice_settlement")
+  payoutMethod          SettlementPayoutMethodType?
+  payoutReference       String                      @default("")
+  paidAt                DateTime?
+  pdf                   StoredFile?                 @relation("Settlement_pdf", fields: [pdfId], references: [id])
+  pdfId                 String?                     @map("pdf")
+  createdAt             DateTime                    @default(now())
+  updatedAt             DateTime                    @default(now()) @updatedAt
+
+  @@index([organizationId])
+  @@index([disputeRecordedById])
+  @@index([pdfId])
+}
+
+model SettlementLine {
+  id                String                 @id @default(cuid())
+  settlement        Settlement?            @relation("SettlementLine_settlement", fields: [settlementId], references: [id])
+  settlementId      String?                @map("settlement")
+  kind              SettlementLineKindType @default(service_fee)
+  description       String                 @default("")
+  asset             Asset?                 @relation("SettlementLine_asset", fields: [assetId], references: [id])
+  assetId           String?                @map("asset")
+  quantity          Decimal?               @default("1") @postgresql.Decimal(12, 3)
+  grossMinor        Int?                   @default(0)
+  clientShareBps    Int?                   @default(0)
+  clientAmountMinor Int?                   @default(0)
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @default(now()) @updatedAt
+
+  @@index([settlementId])
+  @@index([assetId])
+}
+
+model DownstreamVendor {
+  id                 String                     @id @default(cuid())
+  name               String                     @default("")
+  addressLine1       String                     @default("")
+  addressLine2       String                     @default("")
+  city               String                     @default("")
+  region             String                     @default("")
+  postalCode         String                     @default("")
+  countryCode        String                     @default("US")
+  contactName        String                     @default("")
+  contactEmail       String                     @default("")
+  certifications     Json?                      @default("[]")
+  approvedCategories MaterialCategory[]         @relation("DownstreamVendor_approvedCategories")
+  status             DownstreamVendorStatusType @default(pending)
+  approvedOn         DateTime?                  @postgresql.Date
+  reviewDueOn        DateTime?                  @postgresql.Date
+  dueDiligenceFile   StoredFile?                @relation("DownstreamVendor_dueDiligenceFile", fields: [dueDiligenceFileId], references: [id])
+  dueDiligenceFileId String?                    @map("dueDiligenceFile")
+  notes              String                     @default("")
+  shipments          OutboundShipment[]         @relation("OutboundShipment_vendor")
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @default(now()) @updatedAt
+
+  @@index([dueDiligenceFileId])
+}
+
+model OutboundShipment {
+  id                 String                     @id @default(cuid())
+  shipmentNumber     String?                    @unique
+  vendor             DownstreamVendor?          @relation("OutboundShipment_vendor", fields: [vendorId], references: [id])
+  vendorId           String?                    @map("vendor")
+  facility           Facility?                  @relation("OutboundShipment_facility", fields: [facilityId], references: [id])
+  facilityId         String?                    @map("facility")
+  status             OutboundShipmentStatusType @default(draft)
+  shippedAt          DateTime?
+  carrier            String                     @default("")
+  billOfLading       String                     @default("")
+  lines              OutboundShipmentLine[]     @relation("OutboundShipmentLine_shipment")
+  receivedWeight     Decimal?                   @postgresql.Decimal(12, 2)
+  receiptConfirmedAt DateTime?
+  receiptDocument    StoredFile?                @relation("OutboundShipment_receiptDocument", fields: [receiptDocumentId], references: [id])
+  receiptDocumentId  String?                    @map("receiptDocument")
+  destinationCountry String                     @default("")
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @default(now()) @updatedAt
+
+  @@index([vendorId])
+  @@index([facilityId])
+  @@index([receiptDocumentId])
+}
+
+model OutboundShipmentLine {
+  id             String            @id @default(cuid())
+  shipment       OutboundShipment? @relation("OutboundShipmentLine_shipment", fields: [shipmentId], references: [id])
+  shipmentId     String?           @map("shipment")
+  category       MaterialCategory? @relation("OutboundShipmentLine_category", fields: [categoryId], references: [id])
+  categoryId     String?           @map("category")
+  weight         Decimal           @default("0") @postgresql.Decimal(12, 2)
+  containerCount Int?              @default(0)
+  assets         Asset[]           @relation("Asset_outboundLine")
+  commodityLines CommodityLine[]   @relation("CommodityLine_outboundLine")
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @default(now()) @updatedAt
+
+  @@index([shipmentId])
+  @@index([categoryId])
+}
+
+model BuyerCompany {
+  id                   String                            @id @default(cuid())
+  legalName            String                            @default("")
+  tradingName          String                            @default("")
+  addressLine1         String                            @default("")
+  addressLine2         String                            @default("")
+  city                 String                            @default("")
+  region               String                            @default("")
+  postalCode           String                            @default("")
+  countryCode          String                            @default("US")
+  phone                String                            @default("")
+  website              String                            @default("")
+  taxId                String                            @default("")
+  businessType         BuyerCompanyBusinessTypeType?
+  categoriesOfInterest MaterialCategory[]                @relation("BuyerCompany_categoriesOfInterest")
+  monthlySpendBand     BuyerCompanyMonthlySpendBandType?
+  destinationCountries Json?                             @default("[]")
+  status               BuyerCompanyStatusType            @default(draft)
+  statusReason         String                            @default("")
+  taxStatus            BuyerCompanyTaxStatusType         @default(taxable)
+  spendLimitMinor      Int?
+  strikes              Int?                              @default(0)
+  approvedAt           DateTime?
+  approvedBy           User?                             @relation("BuyerCompany_approvedBy", fields: [approvedById], references: [id])
+  approvedById         String?                           @map("approvedBy")
+  submittedAt          DateTime?
+  rejectedAt           DateTime?
+  termsVersionAccepted String                            @default("")
+  termsAcceptedAt      DateTime?
+  users                User[]                            @relation("User_buyerCompany")
+  documents            BuyerDocument[]                   @relation("BuyerDocument_company")
+  messages             BuyerMessage[]                    @relation("BuyerMessage_company")
+  bids                 Bid[]                             @relation("Bid_company")
+  orders               Order[]                           @relation("Order_company")
+  invoices             Invoice[]                         @relation("Invoice_buyerCompany")
+  internalNotes        String                            @default("")
+  createdAt            DateTime                          @default(now())
+  updatedAt            DateTime                          @default(now()) @updatedAt
+  from_Award_company   Award[]                           @relation("Award_company")
+  from_Claim_company   Claim[]                           @relation("Claim_company")
+
+  @@index([approvedById])
+}
+
+model BuyerDocument {
+  id              String                  @id @default(cuid())
+  company         BuyerCompany?           @relation("BuyerDocument_company", fields: [companyId], references: [id])
+  companyId       String?                 @map("company")
+  type            BuyerDocumentTypeType   @default(resale_certificate)
+  file            StoredFile?             @relation("BuyerDocument_file", fields: [fileId], references: [id])
+  fileId          String?                 @map("file")
+  state           String                  @default("")
+  expiresOn       DateTime?               @postgresql.Date
+  status          BuyerDocumentStatusType @default(submitted)
+  reviewNote      String                  @default("")
+  uploadedBy      User?                   @relation("BuyerDocument_uploadedBy", fields: [uploadedById], references: [id])
+  uploadedById    String?                 @map("uploadedBy")
+  expiryHandledAt DateTime?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @default(now()) @updatedAt
+
+  @@index([companyId])
+  @@index([fileId])
+  @@index([uploadedById])
+}
+
+model BuyerMessage {
+  id        String        @id @default(cuid())
+  company   BuyerCompany? @relation("BuyerMessage_company", fields: [companyId], references: [id])
+  companyId String?       @map("company")
+  author    User?         @relation("BuyerMessage_author", fields: [authorId], references: [id])
+  authorId  String?       @map("author")
+  body      String        @default("")
+  fromStaff Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @default(now()) @updatedAt
+
+  @@index([companyId])
+  @@index([authorId])
+}
+
+model SaleEvent {
+  id                 String              @id @default(cuid())
+  title              String              @default("")
+  slug               String              @unique @default("")
+  description        String              @default("")
+  opensAt            DateTime
+  closesAt           DateTime
+  status             SaleEventStatusType @default(draft)
+  lots               Lot[]               @relation("Lot_saleEvent")
+  announcementSentAt DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @default(now()) @updatedAt
+}
+
+model Lot {
+  id                    String              @id @default(cuid())
+  lotNumber             String?             @unique
+  title                 String              @default("")
+  slug                  String              @default("")
+  saleEvent             SaleEvent?          @relation("Lot_saleEvent", fields: [saleEventId], references: [id])
+  saleEventId           String?             @map("saleEvent")
+  category              MaterialCategory?   @relation("Lot_category", fields: [categoryId], references: [id])
+  categoryId            String?             @map("category")
+  description           Json                @default("[{\"type\":\"paragraph\",\"children\":[{\"text\":\"\"}]}]")
+  conditionSummary      String              @default("")
+  facility              Facility?           @relation("Lot_facility", fields: [facilityId], references: [id])
+  facilityId            String?             @map("facility")
+  status                LotStatusType       @default(draft)
+  format                LotFormatType       @default(sealed_bid)
+  bidBasis              LotBidBasisType     @default(lot_total)
+  awardMode             LotAwardModeType    @default(manual)
+  opensAt               DateTime?
+  closesAt              DateTime?
+  originalClosesAt      DateTime?
+  extensionCount        Int?                @default(0)
+  openingBidMinor       Int?
+  reserveMinor          Int?
+  bidIncrementMinor     Int?
+  fixedPriceMinor       Int?
+  currentAmountMinor    Int?
+  bidCount              Int?                @default(0)
+  palletCount           Int?
+  weight                Decimal?            @postgresql.Decimal(12, 2)
+  dimensions            String              @default("")
+  shippingTerms         LotShippingTermType @default(buyer_arranged)
+  exportAllowed         Boolean             @default(true)
+  warrantyDays          Int?                @default(0)
+  lines                 LotLine[]           @relation("LotLine_lot")
+  images                LotImage[]          @relation("LotImage_lot")
+  bids                  Bid[]               @relation("Bid_lot")
+  awards                Award[]             @relation("Award_lot")
+  addenda               LotAddendum[]       @relation("LotAddendum_lot")
+  relistedFrom          Lot?                @relation("Lot_relistedFrom", fields: [relistedFromId], references: [id])
+  relistedFromId        String?             @map("relistedFrom")
+  cancelReason          String              @default("")
+  sourceImport          ManifestImport?     @relation("Lot_sourceImport", fields: [sourceImportId], references: [id])
+  sourceImportId        String?             @unique @map("sourceImport")
+  publishedAt           DateTime?
+  closedAt              DateTime?
+  reminder24SentAt      DateTime?
+  reminder2SentAt       DateTime?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @default(now()) @updatedAt
+  from_Lot_relistedFrom Lot[]               @relation("Lot_relistedFrom")
+  from_Order_lot        Order[]             @relation("Order_lot")
+
+  @@index([slug])
+  @@index([saleEventId])
+  @@index([categoryId])
+  @@index([facilityId])
+  @@index([relistedFromId])
+}
+
+model LotLine {
+  id                     String            @id @default(cuid())
+  lot                    Lot?              @relation("LotLine_lot", fields: [lotId], references: [id])
+  lotId                  String?           @map("lot")
+  lineNumber             Int               @default(1)
+  category               MaterialCategory? @relation("LotLine_category", fields: [categoryId], references: [id])
+  categoryId             String?           @map("category")
+  manufacturer           String            @default("")
+  model                  String            @default("")
+  partNumber             String            @default("")
+  description            String            @default("")
+  specs                  Json?             @default("{}")
+  cosmeticGrade          String            @default("")
+  functionalGrade        String            @default("")
+  quantity               Int               @default(1)
+  unit                   LotLineUnitType   @default(each)
+  serials                Json?             @default("[]")
+  notes                  String            @default("")
+  assets                 Asset[]           @relation("Asset_lotLine")
+  extra                  Json?             @default("{}")
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @default(now()) @updatedAt
+  from_BidLine_lotLine   BidLine[]         @relation("BidLine_lotLine")
+  from_AwardLine_lotLine AwardLine[]       @relation("AwardLine_lotLine")
+
+  @@index([lotId])
+  @@index([categoryId])
+}
+
+model LotImage {
+  id        String      @id @default(cuid())
+  lot       Lot?        @relation("LotImage_lot", fields: [lotId], references: [id])
+  lotId     String?     @map("lot")
+  image     StoredFile? @relation("LotImage_image", fields: [imageId], references: [id])
+  imageId   String?     @map("image")
+  caption   String      @default("")
+  sortOrder Int?        @default(0)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @default(now()) @updatedAt
+
+  @@index([lotId])
+  @@index([imageId])
+}
+
+model LotAddendum {
+  id         String    @id @default(cuid())
+  lot        Lot?      @relation("LotAddendum_lot", fields: [lotId], references: [id])
+  lotId      String?   @map("lot")
+  body       String    @default("")
+  postedBy   User?     @relation("LotAddendum_postedBy", fields: [postedById], references: [id])
+  postedById String?   @map("postedBy")
+  postedAt   DateTime? @default(now())
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @default(now()) @updatedAt
+
+  @@index([lotId])
+  @@index([postedById])
+}
+
+model ManifestImport {
+  id               String                    @id @default(cuid())
+  file             StoredFile?               @relation("ManifestImport_file", fields: [fileId], references: [id])
+  fileId           String?                   @map("file")
+  originalFilename String                    @default("")
+  status           ManifestImportStatusType  @default(uploaded)
+  sheetName        String                    @default("")
+  sheetNames       Json?                     @default("[]")
+  headerRow        Int?                      @default(1)
+  headers          Json?                     @default("[]")
+  mapping          Json?                     @default("{}")
+  rowCount         Int?                      @default(0)
+  validCount       Int?                      @default(0)
+  errorCount       Int?                      @default(0)
+  rows             Json?                     @default("[]")
+  lot              Lot?                      @relation("Lot_sourceImport")
+  purpose          ManifestImportPurposeType @default(lot_manifest)
+  targetJob        Job?                      @relation("ManifestImport_targetJob", fields: [targetJobId], references: [id])
+  targetJobId      String?                   @map("targetJob")
+  uploadedBy       User?                     @relation("ManifestImport_uploadedBy", fields: [uploadedById], references: [id])
+  uploadedById     String?                   @map("uploadedBy")
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @default(now()) @updatedAt
+
+  @@index([fileId])
+  @@index([targetJobId])
+  @@index([uploadedById])
+}
+
+model ManifestMapping {
+  id        String   @id @default(cuid())
+  name      String   @default("")
+  mapping   Json?    @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+model Bid {
+  id                  String        @id @default(cuid())
+  lot                 Lot?          @relation("Bid_lot", fields: [lotId], references: [id])
+  lotId               String?       @map("lot")
+  company             BuyerCompany? @relation("Bid_company", fields: [companyId], references: [id])
+  companyId           String?       @map("company")
+  placedBy            User?         @relation("Bid_placedBy", fields: [placedById], references: [id])
+  placedById          String?       @map("placedBy")
+  amountMinor         Int           @default(0)
+  status              BidStatusType @default(active)
+  activeKey           String?       @unique
+  submittedAt         DateTime      @default(now())
+  source              BidSourceType @default(web)
+  staffNote           String        @default("")
+  sheetFile           StoredFile?   @relation("Bid_sheetFile", fields: [sheetFileId], references: [id])
+  sheetFileId         String?       @map("sheetFile")
+  lines               BidLine[]     @relation("BidLine_bid")
+  idempotencyKey      String?       @unique
+  requestHash         String        @default("")
+  ipAddress           String        @default("")
+  userAgent           String        @default("")
+  supersedes          Bid?          @relation("Bid_supersedes", fields: [supersedesId], references: [id])
+  supersedesId        String?       @map("supersedes")
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @default(now()) @updatedAt
+  from_Bid_supersedes Bid[]         @relation("Bid_supersedes")
+  from_Award_bid      Award[]       @relation("Award_bid")
+
+  @@index([lotId])
+  @@index([companyId])
+  @@index([placedById])
+  @@index([sheetFileId])
+  @@index([supersedesId])
+}
+
+model BidLine {
+  id                     String            @id @default(cuid())
+  bid                    Bid?              @relation("BidLine_bid", fields: [bidId], references: [id])
+  bidId                  String?           @map("bid")
+  lotLine                LotLine?          @relation("BidLine_lotLine", fields: [lotLineId], references: [id])
+  lotLineId              String?           @map("lotLine")
+  unitPriceMinor         Int?              @default(0)
+  quantity               Int?              @default(0)
+  status                 BidLineStatusType @default(active)
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @default(now()) @updatedAt
+  from_AwardLine_bidLine AwardLine[]       @relation("AwardLine_bidLine")
+
+  @@index([bidId])
+  @@index([lotLineId])
+}
+
+model Award {
+  id             String          @id @default(cuid())
+  lot            Lot?            @relation("Award_lot", fields: [lotId], references: [id])
+  lotId          String?         @map("lot")
+  bid            Bid?            @relation("Award_bid", fields: [bidId], references: [id])
+  bidId          String?         @map("bid")
+  company        BuyerCompany?   @relation("Award_company", fields: [companyId], references: [id])
+  companyId      String?         @map("company")
+  awardedBy      User?           @relation("Award_awardedBy", fields: [awardedById], references: [id])
+  awardedById    String?         @map("awardedBy")
+  awardedAt      DateTime?
+  amountMinor    Int?            @default(0)
+  isBelowReserve Boolean         @default(false)
+  overrideReason String          @default("")
+  status         AwardStatusType @default(active)
+  activeLotKey   String?         @unique
+  lines          AwardLine[]     @relation("AwardLine_award")
+  order          Order?          @relation("Award_order", fields: [orderId], references: [id])
+  orderId        String?         @unique @map("order")
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @default(now()) @updatedAt
+
+  @@index([lotId])
+  @@index([bidId])
+  @@index([companyId])
+  @@index([awardedById])
+}
+
+model AwardLine {
+  id               String   @id @default(cuid())
+  award            Award?   @relation("AwardLine_award", fields: [awardId], references: [id])
+  awardId          String?  @map("award")
+  lotLine          LotLine? @relation("AwardLine_lotLine", fields: [lotLineId], references: [id])
+  lotLineId        String?  @map("lotLine")
+  activeLotLineKey String?  @unique
+  bidLine          BidLine? @relation("AwardLine_bidLine", fields: [bidLineId], references: [id])
+  bidLineId        String?  @map("bidLine")
+  quantity         Int?     @default(0)
+  unitPriceMinor   Int?     @default(0)
+  totalMinor       Int?     @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @default(now()) @updatedAt
+
+  @@index([awardId])
+  @@index([lotLineId])
+  @@index([bidLineId])
+}
+
+model Order {
+  id                   String                  @id @default(cuid())
+  orderNumber          String?                 @unique
+  company              BuyerCompany?           @relation("Order_company", fields: [companyId], references: [id])
+  companyId            String?                 @map("company")
+  award                Award?                  @relation("Award_order")
+  lot                  Lot?                    @relation("Order_lot", fields: [lotId], references: [id])
+  lotId                String?                 @map("lot")
+  status               OrderStatusType         @default(awaiting_payment)
+  invoice              Invoice?                @relation("Invoice_order")
+  lines                OrderLine[]             @relation("OrderLine_order")
+  paymentDueAt         DateTime?
+  readyAt              DateTime?
+  removalDueAt         DateTime?
+  releaseMethod        OrderReleaseMethodType?
+  preferredPickupDate  DateTime?               @postgresql.Date
+  dockAppointment      DockAppointment?        @relation("DockAppointment_order")
+  carrierName          String                  @default("")
+  carrierReference     String                  @default("")
+  freightPickupDate    DateTime?               @postgresql.Date
+  destinationCountry   String                  @default("")
+  exportAcknowledgedAt DateTime?
+  releaseDetailsSetAt  DateTime?
+  palletCount          Int?
+  weight               Decimal?                @postgresql.Decimal(12, 2)
+  dimensions           String                  @default("")
+  billOfLading         String                  @default("")
+  releasedAt           DateTime?
+  releasedBy           User?                   @relation("Order_releasedBy", fields: [releasedById], references: [id])
+  releasedById         String?                 @map("releasedBy")
+  driverName           String                  @default("")
+  driverSignature      StoredFile?             @relation("Order_driverSignature", fields: [driverSignatureId], references: [id])
+  driverSignatureId    String?                 @map("driverSignature")
+  claimWindowEndsAt    DateTime?
+  claims               Claim[]                 @relation("Claim_order")
+  restockingInvoice    Invoice?                @relation("Order_restockingInvoice", fields: [restockingInvoiceId], references: [id])
+  restockingInvoiceId  String?                 @map("restockingInvoice")
+  runnerUpOfferedAt    DateTime?
+  cancelReason         String                  @default("")
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @default(now()) @updatedAt
+
+  @@index([companyId])
+  @@index([lotId])
+  @@index([releasedById])
+  @@index([driverSignatureId])
+  @@index([restockingInvoiceId])
+}
+
+model OrderLine {
+  id              String   @id @default(cuid())
+  order           Order?   @relation("OrderLine_order", fields: [orderId], references: [id])
+  orderId         String?  @map("order")
+  lineNumber      Int?     @default(1)
+  description     String   @default("")
+  manufacturer    String   @default("")
+  model           String   @default("")
+  specs           Json?    @default("{}")
+  grade           String   @default("")
+  quantity        Int?     @default(0)
+  unit            String   @default("each")
+  unitPriceMinor  Int?     @default(0)
+  totalMinor      Int?     @default(0)
+  serials         Json?    @default("[]")
+  sourceLotLineId String   @default("")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @default(now()) @updatedAt
+
+  @@index([orderId])
+}
+
+model DockAppointment {
+  id         String                    @id @default(cuid())
+  facility   Facility?                 @relation("DockAppointment_facility", fields: [facilityId], references: [id])
+  facilityId String?                   @map("facility")
+  startsAt   DateTime
+  endsAt     DateTime
+  order      Order?                    @relation("DockAppointment_order", fields: [orderId], references: [id])
+  orderId    String?                   @unique @map("order")
+  job        Job?                      @relation("DockAppointment_job", fields: [jobId], references: [id])
+  jobId      String?                   @map("job")
+  driverName String                    @default("")
+  vehicle    String                    @default("")
+  notes      String                    @default("")
+  status     DockAppointmentStatusType @default(booked)
+  createdAt  DateTime                  @default(now())
+  updatedAt  DateTime                  @default(now()) @updatedAt
+
+  @@index([facilityId])
+  @@index([jobId])
+}
+
+model Claim {
+  id                   String               @id @default(cuid())
+  claimNumber          String?              @unique
+  order                Order?               @relation("Claim_order", fields: [orderId], references: [id])
+  orderId              String?              @map("order")
+  company              BuyerCompany?        @relation("Claim_company", fields: [companyId], references: [id])
+  companyId            String?              @map("company")
+  openedBy             User?                @relation("Claim_openedBy", fields: [openedById], references: [id])
+  openedById           String?              @map("openedBy")
+  reason               ClaimReasonType      @default(shortage)
+  description          String               @default("")
+  lines                Json?                @default("[]")
+  photos               ClaimPhoto[]         @relation("ClaimPhoto_claim")
+  requestedAmountMinor Int?                 @default(0)
+  status               ClaimStatusType      @default(submitted)
+  resolution           ClaimResolutionType?
+  approvedAmountMinor  Int?
+  resolutionNote       String               @default("")
+  resolvedBy           User?                @relation("Claim_resolvedBy", fields: [resolvedById], references: [id])
+  resolvedById         String?              @map("resolvedBy")
+  resolvedAt           DateTime?
+  refund               Refund?              @relation("Claim_refund", fields: [refundId], references: [id])
+  refundId             String?              @unique @map("refund")
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @default(now()) @updatedAt
+
+  @@index([orderId])
+  @@index([companyId])
+  @@index([openedById])
+  @@index([resolvedById])
+}
+
+model ClaimPhoto {
+  id        String      @id @default(cuid())
+  claim     Claim?      @relation("ClaimPhoto_claim", fields: [claimId], references: [id])
+  claimId   String?     @map("claim")
+  image     StoredFile? @relation("ClaimPhoto_image", fields: [imageId], references: [id])
+  imageId   String?     @map("image")
+  caption   String      @default("")
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @default(now()) @updatedAt
+
+  @@index([claimId])
+  @@index([imageId])
+}
+
+model Invoice {
+  id                           String              @id @default(cuid())
+  invoiceNumber                String?             @unique
+  kind                         InvoiceKindType     @default(lot_sale)
+  buyerCompany                 BuyerCompany?       @relation("Invoice_buyerCompany", fields: [buyerCompanyId], references: [id])
+  buyerCompanyId               String?             @map("buyerCompany")
+  clientOrganization           ClientOrganization? @relation("Invoice_clientOrganization", fields: [clientOrganizationId], references: [id])
+  clientOrganizationId         String?             @map("clientOrganization")
+  order                        Order?              @relation("Invoice_order", fields: [orderId], references: [id])
+  orderId                      String?             @unique @map("order")
+  job                          Job?                @relation("Invoice_job", fields: [jobId], references: [id])
+  jobId                        String?             @map("job")
+  settlement                   Settlement?         @relation("Invoice_settlement", fields: [settlementId], references: [id])
+  settlementId                 String?             @unique @map("settlement")
+  status                       InvoiceStatusType   @default(open)
+  lines                        InvoiceLine[]       @relation("InvoiceLine_invoice")
+  subtotalMinor                Int?                @default(0)
+  premiumMinor                 Int?                @default(0)
+  taxMinor                     Int?                @default(0)
+  freightMinor                 Int?                @default(0)
+  feeMinor                     Int?                @default(0)
+  otherMinor                   Int?                @default(0)
+  totalMinor                   Int?                @default(0)
+  paidMinor                    Int?                @default(0)
+  refundedMinor                Int?                @default(0)
+  currencyCode                 String              @default("USD")
+  issuedAt                     DateTime?
+  dueAt                        DateTime?
+  isOverdue                    Boolean             @default(false)
+  remindedAt                   DateTime?
+  paidAt                       DateTime?
+  voidReason                   String              @default("")
+  waived                       Boolean             @default(false)
+  taxExemptReason              String              @default("")
+  billTo                       Json?               @default("{}")
+  payments                     Payment[]           @relation("Payment_invoice")
+  paymentSessions              PaymentSession[]    @relation("PaymentSession_invoice")
+  refunds                      Refund[]            @relation("Refund_invoice")
+  pdf                          StoredFile?         @relation("Invoice_pdf", fields: [pdfId], references: [id])
+  pdfId                        String?             @map("pdf")
+  createdAt                    DateTime            @default(now())
+  updatedAt                    DateTime            @default(now()) @updatedAt
+  from_Order_restockingInvoice Order[]             @relation("Order_restockingInvoice")
+
+  @@index([buyerCompanyId])
+  @@index([clientOrganizationId])
+  @@index([jobId])
+  @@index([pdfId])
+}
+
+model InvoiceLine {
+  id               String              @id @default(cuid())
+  invoice          Invoice?            @relation("InvoiceLine_invoice", fields: [invoiceId], references: [id])
+  invoiceId        String?             @map("invoice")
+  kind             InvoiceLineKindType @default(item)
+  description      String              @default("")
+  quantity         Decimal?            @default("1") @postgresql.Decimal(12, 3)
+  unitPriceMinor   Int?                @default(0)
+  totalMinor       Int?                @default(0)
+  paymentSessionId String              @default("")
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @default(now()) @updatedAt
+
+  @@index([invoiceId])
+}
+
+model PaymentProvider {
+  id                          String           @id @default(cuid())
+  name                        String           @default("")
+  code                        String           @unique @default("")
+  isInstalled                 Boolean          @default(true)
+  credentials                 Json?            @default("{}")
+  metadata                    Json?            @default("{}")
+  createPaymentFunction       String           @default("manual")
+  capturePaymentFunction      String           @default("manual")
+  refundPaymentFunction       String           @default("manual")
+  getPaymentStatusFunction    String           @default("manual")
+  generatePaymentLinkFunction String           @default("manual")
+  handleWebhookFunction       String           @default("manual")
+  paymentSessions             PaymentSession[] @relation("PaymentSession_paymentProvider")
+  createdAt                   DateTime         @default(now())
+  updatedAt                   DateTime         @default(now()) @updatedAt
+}
+
+model PaymentSession {
+  id                 String                   @id @default(cuid())
+  invoice            Invoice?                 @relation("PaymentSession_invoice", fields: [invoiceId], references: [id])
+  invoiceId          String?                  @map("invoice")
+  paymentProvider    PaymentProvider?         @relation("PaymentSession_paymentProvider", fields: [paymentProviderId], references: [id])
+  paymentProviderId  String?                  @map("paymentProvider")
+  method             PaymentSessionMethodType @default(card)
+  openKey            String?                  @unique
+  idempotencyKeyHash String?                  @unique
+  status             PaymentSessionStatusType @default(pending)
+  amountMinor        Int?                     @default(0)
+  feeMinor           Int?                     @default(0)
+  currencyCode       String                   @default("USD")
+  providerPaymentId  String                   @default("")
+  clientSecret       String                   @default("")
+  capturedAt         DateTime?
+  canceledAt         DateTime?
+  lastError          String                   @default("")
+  createdBy          User?                    @relation("PaymentSession_createdBy", fields: [createdById], references: [id])
+  createdById        String?                  @map("createdBy")
+  metadata           Json?                    @default("{}")
+  payment            Payment?                 @relation("Payment_session")
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @default(now()) @updatedAt
+
+  @@index([invoiceId])
+  @@index([paymentProviderId])
+  @@index([providerPaymentId])
+  @@index([createdById])
+}
+
+model PaymentWebhookEvent {
+  id              String   @id @default(cuid())
+  replayKey       String   @unique @default("")
+  providerCode    String   @default("")
+  providerEventId String   @default("")
+  eventType       String   @default("")
+  payloadHash     String   @default("")
+  processedAt     DateTime
+  outcome         String   @default("")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @default(now()) @updatedAt
+}
+
+model Payment {
+  id                String            @id @default(cuid())
+  invoice           Invoice?          @relation("Payment_invoice", fields: [invoiceId], references: [id])
+  invoiceId         String?           @map("invoice")
+  session           PaymentSession?   @relation("Payment_session", fields: [sessionId], references: [id])
+  sessionId         String?           @unique @map("session")
+  method            PaymentMethodType @default(wire)
+  amountMinor       Int?              @default(0)
+  status            PaymentStatusType @default(reported)
+  providerReference String?           @unique
+  bankReference     String            @default("")
+  paidOn            String            @default("")
+  reportedBy        User?             @relation("Payment_reportedBy", fields: [reportedById], references: [id])
+  reportedById      String?           @map("reportedBy")
+  reportedAt        DateTime?
+  confirmedBy       User?             @relation("Payment_confirmedBy", fields: [confirmedById], references: [id])
+  confirmedById     String?           @map("confirmedBy")
+  confirmedAt       DateTime?
+  rejectionReason   String            @default("")
+  refundedMinor     Int?              @default(0)
+  refunds           Refund[]          @relation("Refund_payment")
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @default(now()) @updatedAt
+
+  @@index([invoiceId])
+  @@index([reportedById])
+  @@index([confirmedById])
+}
+
+model Refund {
+  id                String           @id @default(cuid())
+  payment           Payment?         @relation("Refund_payment", fields: [paymentId], references: [id])
+  paymentId         String?          @map("payment")
+  invoice           Invoice?         @relation("Refund_invoice", fields: [invoiceId], references: [id])
+  invoiceId         String?          @map("invoice")
+  amountMinor       Int?             @default(0)
+  reason            String           @default("")
+  status            RefundStatusType @default(pending)
+  providerReference String           @default("")
+  method            RefundMethodType @default(card)
+  createdBy         User?            @relation("Refund_createdBy", fields: [createdById], references: [id])
+  createdById       String?          @map("createdBy")
+  claim             Claim?           @relation("Claim_refund")
+  idempotencyKey    String?          @unique
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @default(now()) @updatedAt
+
+  @@index([paymentId])
+  @@index([invoiceId])
+  @@index([createdById])
+}
+
+model Notification {
+  id          String                      @id @default(cuid())
+  user        User?                       @relation("Notification_user", fields: [userId], references: [id])
+  userId      String?                     @map("user")
+  type        String                      @default("")
+  title       String                      @default("")
+  body        String                      @default("")
+  link        String                      @default("")
+  readAt      DateTime?
+  emailStatus NotificationEmailStatusType @default(not_sent)
+  emailError  String                      @default("")
+  dedupeKey   String?                     @unique
+  createdAt   DateTime                    @default(now())
+  updatedAt   DateTime                    @default(now()) @updatedAt
+
+  @@index([userId])
+}
+
+model AuditEvent {
+  id         String   @id @default(cuid())
+  actor      User?    @relation("AuditEvent_actor", fields: [actorId], references: [id])
+  actorId    String?  @map("actor")
+  actorLabel String   @default("")
+  action     String   @default("")
+  entityType String   @default("")
+  entityId   String   @default("")
+  before     Json?
+  after      Json?
+  reason     String   @default("")
+  ipAddress  String   @default("")
+  occurredAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  @@index([actorId])
+  @@index([entityId])
+}
+
+model CommandReceipt {
+  id            String   @id @default(cuid())
+  eventKey      String   @unique @default("")
+  eventType     String   @default("")
+  schemaVersion Int      @default(1)
+  aggregateType String   @default("")
+  aggregateId   String   @default("")
+  payload       Json?
+  result        Json?
+  actorId       String   @default("")
+  payloadHash   String   @default("")
+  occurredAt    DateTime
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @default(now()) @updatedAt
 }
 
 model OAuthApp {
@@ -125,4 +1589,542 @@ model OAuthToken {
 
   @@index([clientId])
   @@index([userId])
+}
+
+enum UserKindType {
+  staff
+  buyer
+  client
+}
+
+enum UserBuyerRoleType {
+  admin
+  bidder
+}
+
+enum UserClientRoleType {
+  admin
+  viewer
+}
+
+enum UserOnboardingStatusType {
+  not_started
+  in_progress
+  completed
+  dismissed
+}
+
+enum StoreSettingsWeightUnitType {
+  lb
+  kg
+}
+
+enum StoreSettingsPublicLotVisibilityType {
+  teaser
+  full
+  hidden
+}
+
+enum StoreSettingsDefaultBidFormatType {
+  sealed_bid
+  open_auction
+  fixed_price
+}
+
+enum StoreSettingsDefaultBidBasisType {
+  lot_total
+  per_line
+}
+
+enum StoreSettingsDefaultAwardModeType {
+  manual
+  auto
+}
+
+enum MaterialCategoryKindType {
+  equipment
+  component
+  commodity
+}
+
+enum GradeDefinitionKindType {
+  cosmetic
+  functional
+}
+
+enum AcceptedItemFeeTypeType {
+  free
+  per_item
+  per_weight
+}
+
+enum StoredFileVisibilityType {
+  public
+  private
+}
+
+enum ClientOrganizationStatusType {
+  prospect
+  active
+  inactive
+}
+
+enum ClientOrganizationDefaultPricingModelType {
+  fee_for_service
+  revenue_share
+  buyout
+}
+
+enum JobTypeType {
+  pickup
+  drop_off
+}
+
+enum JobStatusType {
+  requested
+  quoted
+  accepted
+  declined
+  scheduled
+  en_route
+  collected
+  received
+  processing
+  completed
+  settled
+  closed
+  cancelled
+  on_hold
+}
+
+enum JobPricingModelType {
+  fee_for_service
+  revenue_share
+  buyout
+}
+
+enum JobEstimateLineUnitType {
+  units
+  pallets
+  lb
+  kg
+}
+
+enum JobServiceLineKindType {
+  pickup
+  audit
+  wipe
+  shred
+  recycling_fee
+  other
+}
+
+enum JobPhotoStageType {
+  request
+  collection
+  receiving
+}
+
+enum ContainerTypeType {
+  pallet
+  gaylord
+  box
+  cage
+  tote
+}
+
+enum ContainerStatusType {
+  collected
+  received
+  processed
+  missing
+  unexpected
+}
+
+enum CustodyEventTypeType {
+  collected
+  handed_to_carrier
+  received
+  seal_verified
+  seal_exception
+  moved
+  audited
+  sanitized
+  verified
+  allocated
+  released_to_buyer
+  shipped_downstream
+  returned_to_client
+  hold_placed
+  hold_released
+}
+
+enum AssetStatusType {
+  received
+  audited
+  ready_for_sale
+  allocated
+  sold
+  released
+  recycling
+  downstream
+  returned
+  on_hold
+}
+
+enum AssetSanitizationStatusType {
+  not_required
+  pending
+  passed
+  failed
+  destroyed
+}
+
+enum AssetDispositionType {
+  undecided
+  resale
+  parts
+  recycle
+  return
+  hold
+}
+
+enum SanitizationRecordMethodType {
+  clear
+  purge
+  destroy
+}
+
+enum SanitizationRecordTechniqueType {
+  overwrite
+  block_erase
+  crypto_erase
+  secure_erase
+  degauss
+  shred
+  crush
+  disintegrate
+}
+
+enum SanitizationRecordResultType {
+  passed
+  failed
+}
+
+enum ErasureImportStatusType {
+  uploaded
+  validated
+  committed
+  discarded
+}
+
+enum CertificateTypeType {
+  data_destruction
+  recycling
+}
+
+enum CertificateStatusType {
+  issued
+  revoked
+}
+
+enum SettlementStatusType {
+  draft
+  in_review
+  published
+  disputed
+  paid
+  closed
+}
+
+enum SettlementPayoutMethodType {
+  cheque
+  ach
+  wire
+  credit
+}
+
+enum SettlementLineKindType {
+  service_fee
+  asset_value
+  commodity_value
+  adjustment
+}
+
+enum DownstreamVendorStatusType {
+  pending
+  approved
+  suspended
+}
+
+enum OutboundShipmentStatusType {
+  draft
+  shipped
+  receipt_confirmed
+  closed
+}
+
+enum BuyerCompanyBusinessTypeType {
+  refurbisher
+  reseller
+  exporter
+  recycler
+  broker
+  other
+}
+
+enum BuyerCompanyMonthlySpendBandType {
+  under_5k
+  from_5k_to_25k
+  from_25k_to_100k
+  over_100k
+}
+
+enum BuyerCompanyStatusType {
+  draft
+  submitted
+  under_review
+  needs_info
+  approved
+  rejected
+  suspended
+  closed
+}
+
+enum BuyerCompanyTaxStatusType {
+  taxable
+  exempt_resale
+  export
+}
+
+enum BuyerDocumentTypeType {
+  resale_certificate
+  export_license
+  business_registration
+  w9
+  r2_certificate
+  other
+}
+
+enum BuyerDocumentStatusType {
+  submitted
+  accepted
+  rejected
+}
+
+enum SaleEventStatusType {
+  draft
+  published
+  closed
+}
+
+enum LotStatusType {
+  draft
+  scheduled
+  open
+  closed
+  awarded
+  completed
+  unsold
+  cancelled
+}
+
+enum LotFormatType {
+  sealed_bid
+  open_auction
+  fixed_price
+}
+
+enum LotBidBasisType {
+  lot_total
+  per_line
+}
+
+enum LotAwardModeType {
+  manual
+  auto
+}
+
+enum LotShippingTermType {
+  buyer_arranged
+  seller_quoted
+  pickup_only
+}
+
+enum LotLineUnitType {
+  each
+  lb
+  kg
+}
+
+enum ManifestImportStatusType {
+  uploaded
+  mapped
+  validated
+  committed
+  discarded
+}
+
+enum ManifestImportPurposeType {
+  lot_manifest
+  asset_import
+}
+
+enum BidStatusType {
+  active
+  superseded
+  withdrawn
+  won
+  partially_won
+  lost
+  void
+  defaulted
+  expired
+}
+
+enum BidSourceType {
+  web
+  bid_sheet
+  staff_entry
+}
+
+enum BidLineStatusType {
+  active
+  won
+  lost
+}
+
+enum AwardStatusType {
+  active
+  defaulted
+  cancelled
+}
+
+enum OrderStatusType {
+  awaiting_payment
+  paid
+  ready_for_release
+  released
+  completed
+  defaulted
+  cancelled
+}
+
+enum OrderReleaseMethodType {
+  pickup
+  freight
+}
+
+enum DockAppointmentStatusType {
+  booked
+  arrived
+  done
+  cancelled
+  no_show
+}
+
+enum ClaimReasonType {
+  shortage
+  wrong_item
+  misgraded
+  dead_on_arrival
+  damage
+  other
+}
+
+enum ClaimStatusType {
+  submitted
+  under_review
+  approved
+  denied
+  resolved
+}
+
+enum ClaimResolutionType {
+  refund
+  partial_refund
+  return_and_refund
+  denied
+}
+
+enum InvoiceKindType {
+  lot_sale
+  service
+  settlement
+  restocking
+  storage
+}
+
+enum InvoiceStatusType {
+  open
+  partially_paid
+  paid
+  partially_refunded
+  refunded
+  void
+}
+
+enum InvoiceLineKindType {
+  item
+  premium
+  tax
+  freight
+  card_fee
+  storage
+  service
+  adjustment
+}
+
+enum PaymentSessionMethodType {
+  card
+  bank_transfer
+}
+
+enum PaymentSessionStatusType {
+  pending
+  requires_action
+  captured
+  failed
+  canceled
+  unknown
+}
+
+enum PaymentMethodType {
+  card
+  ach
+  wire
+  cheque
+  cash
+}
+
+enum PaymentStatusType {
+  reported
+  confirmed
+  rejected
+  captured
+  refunded
+  partially_refunded
+}
+
+enum RefundStatusType {
+  pending
+  succeeded
+  failed
+  unknown
+}
+
+enum RefundMethodType {
+  card
+  wire
+  ach
+  cheque
+  cash
+}
+
+enum NotificationEmailStatusType {
+  not_sent
+  queued
+  sent
+  failed
+  skipped
 }

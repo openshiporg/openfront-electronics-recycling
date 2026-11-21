@@ -9,10 +9,10 @@ import { MCP_SCOPES, digestToken, randomToken } from "../mcp-oauth/core";
 export const OAuthApp = list({
   access: {
     operation: {
-      query: permissions.canManagePeople,
-      create: permissions.canManagePeople,
-      update: permissions.canManagePeople,
-      delete: permissions.canManagePeople,
+      query: permissions.canManageUsers,
+      create: permissions.canManageUsers,
+      update: permissions.canManageUsers,
+      delete: permissions.canManageUsers,
     },
   },
   fields: {
