@@ -6,11 +6,15 @@ import { Countdown } from './Countdown'
 
 /** Our own photographs, used only for a lot that has none of its own, by category. */
 export function fallbackPhoto(category: string, title = '') {
-  const c = `${category} ${title}`.toLowerCase()
-  if (/laptop|notebook|macbook|latitude|thinkpad|elitebook/.test(c)) return '/storefront/lot-laptops.webp'
-  if (/server|network|storage|drive|rack|data-cent|data cent|switch/.test(c)) return '/storefront/lot-servers.webp'
-  if (/desktop|monitor|printer|component|cable|scrap|crt|batter|mobile|phone|tablet/.test(c)) return '/storefront/lot-mixed.webp'
-  return '/storefront/lot-laptops.webp'
+  const pick = (text: string) => {
+    const c = text.toLowerCase()
+    if (/laptop|notebook|macbook|latitude|thinkpad|elitebook/.test(c)) return '/storefront/lot-laptops.webp'
+    if (/desktop|monitor|printer|component|cable|scrap|crt|batter|mobile|phone|tablet/.test(c)) return '/storefront/lot-mixed.webp'
+    if (/server|network|storage|drive|rack|data-cent|data cent|switch/.test(c)) return '/storefront/lot-servers.webp'
+    return null
+  }
+  // The category decides first; the title only when there is no category.
+  return pick(category) ?? pick(title) ?? '/storefront/lot-laptops.webp'
 }
 
 function Price({ lot, currency, priced }: { lot: Lot; currency: string; priced: boolean }) {

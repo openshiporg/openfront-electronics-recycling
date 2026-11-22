@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Next x Keystone Starter",
-  description: "Next, Keystone, and Tailwind Starter Template",
+  title: "Electronics Recycling",
+  description: "IT asset recovery, certified data destruction and wholesale used IT equipment.",
 };
 
 export default function RootLayout({
