@@ -87,6 +87,45 @@ test('partial payment: a reported transfer is not money; confirmed part payment 
   assert.equal((await ctx.prisma.order.findUnique({ where: { id: order.id } })).status, 'paid')
 })
 
+test('no Stripe keys at all: the invoice offers bank transfer, says card is not set up, and every invoice read and download works', { skip }, async () => {
+  const STRIPE = ['STRIPE_SECRET_KEY', 'STRIPE_PUBLISHABLE_KEY', 'NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY', 'STRIPE_WEBHOOK_SECRET']
+  const saved = Object.fromEntries(STRIPE.map((k) => [k, process.env[k]]))
+  for (const k of STRIPE) delete process.env[k]
+  // The Stripe provider row is installed (onboarding adds it); only the keys are missing.
+  if (!(await ctx.prisma.paymentProvider.findFirst({ where: { code: 'stripe', isInstalled: true } }))) {
+    await ctx.prisma.paymentProvider.create({ data: { code: 'stripe', name: 'Card (Stripe)', isInstalled: true, createPaymentFunction: 'stripe', capturePaymentFunction: 'stripe', refundPaymentFunction: 'stripe', getPaymentStatusFunction: 'stripe', generatePaymentLinkFunction: 'stripe', handleWebhookFunction: 'stripe' } })
+  }
+  try {
+    const a = await f.buyer(ctx.prisma)
+    const { invoice } = await awarded([a], [250_000])
+    const buyerCtx = await ctx.as(a.user.id)
+    const reads = require(path.join(root, 'features/keystone/domain/reads.ts'))
+    const docs = require(path.join(root, 'features/keystone/domain/documents.ts'))
+    const page = await reads.myInvoice(buyerCtx, { invoiceNumber: invoice.invoiceNumber })
+    const o = page.paymentOptions
+    assert.equal(o.card, false)
+    assert.equal(o.bankTransfer, true)
+    assert.equal(o.cardUnavailableReason, 'Card payments are not set up. Pay by bank transfer.')
+    assert.equal(o.publishableKey, '')
+    assert.ok(o.wireInstructions === null || typeof o.wireInstructions === 'string')
+    assert.equal(o.balanceMinor, invoice.totalMinor)
+    // Choosing card fails with the same plain reason, not an error page; transfer works end to end.
+    await assert.rejects(money.initiateInvoicePaymentSession(buyerCtx, { invoiceNumber: invoice.invoiceNumber, method: 'card', idempotencyKey: f.key() }), { message: 'Card payments are not set up. Pay by bank transfer.' })
+    await money.initiateInvoicePaymentSession(buyerCtx, { invoiceNumber: invoice.invoiceNumber, method: 'bank_transfer', idempotencyKey: f.key() })
+    const pdf = await docs.downloadInvoice(buyerCtx, { invoiceNumber: invoice.invoiceNumber })
+    assert.equal(Buffer.from(pdf.base64, 'base64').subarray(0, 5).toString(), '%PDF-')
+    await docs.staffInvoicePdf(staffCtx, { invoiceId: invoice.id })
+    const reported = await money.reportBankTransfer(buyerCtx, { invoiceNumber: invoice.invoiceNumber, reference: 'FW 51002', date: '2026-11-22', amountMinor: invoice.totalMinor })
+    await money.confirmBankTransfer(staffCtx, { paymentId: reported.id })
+    assert.equal((await ctx.prisma.invoice.findUnique({ where: { id: invoice.id } })).status, 'paid')
+    // The same path through GraphQL: a plain refusal in the result, never an error.
+    const gql = await buyerCtx.graphql.raw({ query: 'query($i: JSON) { myInvoice(input: $i) }', variables: { i: { invoiceNumber: invoice.invoiceNumber } } })
+    assert.equal(gql.errors, undefined)
+  } finally {
+    for (const k of STRIPE) if (saved[k] !== undefined) process.env[k] = saved[k]
+  }
+})
+
 test('refund cap and idempotency: one key refunds once; never more than was received', { skip }, async () => {
   const a = await f.buyer(ctx.prisma)
   const { invoice } = await awarded([a], [200_000])
