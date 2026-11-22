@@ -12,9 +12,10 @@ export type Settings = Record<string, any> & {
 
 /** The singleton; created with working defaults the first time it is read. */
 export async function getSettings(db: Tx): Promise<Settings> {
-  const existing = await db.storeSettings.findFirst()
+  const existing = await db.storeSettings.findUnique({ where: { id: 1 } })
   if (existing) return existing
-  return db.storeSettings.create({ data: {} })
+  // Singleton row id 1; upsert so two first requests at once do not collide.
+  return db.storeSettings.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} })
 }
 
 // ---------------------------------------------------------------- files

@@ -8,6 +8,7 @@ import { extendGraphqlSchema } from "./mutations";
 import { sendPasswordResetEmail } from "./lib/mail";
 import { withMcpBearerSessions } from "./mcp-oauth/session";
 import { ROLE_PERMISSIONS, SESSION_DATA } from "./access";
+import { rethrowPrismaErrors } from "./lib/prismaErrors";
 
 const databaseURL = process.env.DATABASE_URL || "file:./keystone.db";
 
@@ -50,6 +51,8 @@ export default withAuth(
     db: {
       provider: "postgresql",
       url: databaseURL,
+      // Failed queries must throw (Keystone returns them as values otherwise).
+      extendPrismaClient: rethrowPrismaErrors,
     },
     lists: models,
     ui: {

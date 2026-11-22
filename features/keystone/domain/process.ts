@@ -1,4 +1,4 @@
-import { audit, dbNow, fail, inTransaction, lockRow, nextNumber, str, verificationCode, type Ctx, type Tx } from '../lib/core'
+import { BULK, audit, dbNow, fail, inTransaction, lockRow, nextNumber, str, verificationCode, type Ctx, type Tx } from '../lib/core'
 import { erasureResult, erasureTechnique, ERASURE_FIELDS, proposeMapping, detectHeaderRow } from '../lib/rules/sheets'
 import { sanitizationAllowsSale, sanitizationStatusFromRecords } from '../lib/rules/lifecycle'
 import { afterCommit, asDownload, decodeUpload, getSettings, notify, organizationUsers, storeFile, storeUpload, type FileInput } from '../lib/services'
@@ -107,7 +107,7 @@ export async function recordSanitization(context: Ctx, args: { assetIds: string[
     }
     await audit(tx, { actorId: staffId, action: 'sanitization.recorded', entityType: 'Asset', entityId: ids[0], after: { assets: ids.length, method, technique, result: outcome } })
     return out
-  })
+  }, BULK)
 }
 
 /** R6: import an erasure tool's report (Blancco, WipeDrive, KillDisk, etc. exported to Excel or CSV). */
@@ -221,7 +221,7 @@ export async function setAssetDisposition(context: Ctx, args: { assetIds: string
     }
     await audit(tx, { actorId: staffId, action: 'asset.disposition', entityType: 'Asset', entityId: ids[0], after: { assets: ids.length, disposition } })
     return out
-  })
+  }, BULK)
 }
 
 export async function placeAssetHold(context: Ctx, args: { assetIds: string[]; reason: string }) {
@@ -240,7 +240,7 @@ export async function placeAssetHold(context: Ctx, args: { assetIds: string[]; r
     }
     await audit(tx, { actorId: staffId, action: 'asset.hold', entityType: 'Asset', entityId: ids[0] ?? '', after: { assets: out.length }, reason })
     return out
-  })
+  }, BULK)
 }
 
 export async function releaseAssetHold(context: Ctx, args: { assetIds: string[]; note?: string }) {
@@ -256,7 +256,7 @@ export async function releaseAssetHold(context: Ctx, args: { assetIds: string[];
     }
     await audit(tx, { actorId: staffId, action: 'asset.hold_released', entityType: 'Asset', entityId: ids[0] ?? '', after: { assets: out.length }, reason: str(args.note, 500) })
     return out
-  })
+  }, BULK)
 }
 
 /** R3: export assets to Excel (also used to send a client their asset list). */
@@ -367,7 +367,7 @@ export async function issueCertificate(context: Ctx, args: { jobId: string; type
     await notify(tx, { userIds: await organizationUsers(tx, job.organizationId), type: 'certificate_issued', title: `${cert.certificateNumber} for ${job.jobNumber}`, body: `Your ${type === 'data_destruction' ? 'data destruction' : 'recycling'} certificate is ready to download.`, link: `/client/jobs/${job.jobNumber}` })
     await audit(tx, { actorId: context.session!.itemId, action: 'certificate.issued', entityType: 'Certificate', entityId: cert.id, after: { type, jobId: job.id, replaces: replaces?.certificateNumber } })
     return updated
-  })
+  }, BULK)
   afterCommit(context)
   return result
 }

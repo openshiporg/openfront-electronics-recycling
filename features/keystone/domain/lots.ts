@@ -1,4 +1,4 @@
-import { audit, clientIp, dbNow, fail, inTransaction, lockRow, nextNumber, requestHash, requireBuyer, str, userAgent, withCommandReceipt, type Ctx, type Tx } from '../lib/core'
+import { BULK, audit, clientIp, dbNow, fail, inTransaction, lockRow, nextNumber, requestHash, requireBuyer, str, userAgent, withCommandReceipt, type Ctx, type Tx } from '../lib/core'
 import { awardOverrideProblem, bidEligibilityProblem, minimumOpenBid, perLineTotal, planPerLineAward, rankBids, softCloseExtension, type GridBid } from '../lib/rules/bidding'
 import { awardInvoiceLines } from '../lib/rules/money'
 import { sanitizationAllowsSale } from '../lib/rules/lifecycle'
@@ -223,7 +223,7 @@ export async function publishSaleEvent(context: Ctx, args: { saleEventId: string
     }
     await audit(tx, { actorId: staffId, action: 'sale_event.published', entityType: 'SaleEvent', entityId: event.id, after: { problems } })
     return updated
-  })
+  }, BULK)
   afterCommit(context)
   return { saleEvent: result, problems }
 }
@@ -617,7 +617,7 @@ export async function awardLot(context: Ctx, args: { lotId: string; bidId?: stri
     }
     if (!args.bidId) fail('Choose the winning bid.')
     return [await createWholeLotAward(tx, { lotId: args.lotId, bidId: args.bidId, actorId, reason, confirmBelowReserve: Boolean(args.confirmBelowReserve) })]
-  })
+  }, BULK)
   afterCommit(context)
   return result
 }
@@ -721,7 +721,7 @@ export async function createLotFromAssets(context: Ctx, args: { assetIds: string
     }
     await audit(tx, { actorId: context.session!.itemId, action: 'lot.created_from_assets', entityType: 'Lot', entityId: lot.id, after: { assets: ids.length, lines: n } })
     return lot
-  })
+  }, BULK)
 }
 
 /** Move assets off a draft lot back to inventory. */

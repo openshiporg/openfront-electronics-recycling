@@ -1,6 +1,7 @@
 import { ROLE_PERMISSIONS, type RolePermission } from '../access'
 import { fail, requireStaff, str, type Ctx, type Tx } from '../lib/core'
 import { getSettings } from '../lib/services'
+import { seedStarterRecords } from './starterRecords'
 
 // §4.11. Seeds everything a recycler needs on day one. Safe to run twice: every
 // step looks for what is already there and only adds what is missing.
@@ -115,6 +116,10 @@ type OnboardingInput = {
   facility?: { name?: string; code?: string; addressLine1?: string; city?: string; region?: string; postalCode?: string; countryCode?: string; phone?: string }
   certifications?: Array<{ name: string; certificateNumber?: string; certifyingBody?: string; expiresOn?: string | null }>
   wireInstructions?: string
+  /** 'basic' (default): settings, roles and catalogue. 'full': also the §4.11 starter records. */
+  template?: 'basic' | 'full'
+  /** Password for the starter logins (full template). Generated when omitted; returned once. */
+  starterPassword?: string
 }
 
 export async function runElectronicsRecyclingOnboarding(context: Ctx, input: OnboardingInput) {
@@ -213,5 +218,9 @@ export async function runElectronicsRecyclingOnboarding(context: Ctx, input: Onb
     await tx.user.update({ where: { id: session.itemId }, data: { onboardingStatus: 'completed' } })
   }, { timeout: 60_000 })
 
-  return { counts }
+  if (input.template !== 'full') return { counts }
+  if (input.starterPassword && String(input.starterPassword).length < 10) fail('Use a starter password of at least 10 characters.')
+  const settings = await getSettings(context.prisma)
+  const starter = await seedStarterRecords(context, { businessName, supportEmail: settings.supportEmail, password: input.starterPassword })
+  return { counts, starter }
 }

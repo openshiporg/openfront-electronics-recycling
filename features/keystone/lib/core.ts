@@ -59,9 +59,12 @@ export async function requireClient(context: Ctx, options: { admin?: boolean } =
   return { session, user, organizationId: user.clientOrganizationId as string }
 }
 
+/** Bulk commands over many rows (a pallet of assets, a whole lot) get a longer timeout. */
+export const BULK = { timeout: 180_000 }
+
 /** Run a command in one transaction. Postgres row locks order competing writers. */
-export async function inTransaction<T>(context: Ctx, fn: (tx: Tx) => Promise<T>): Promise<T> {
-  return context.prisma.$transaction(fn, { timeout: 20_000, maxWait: 10_000 })
+export async function inTransaction<T>(context: Ctx, fn: (tx: Tx) => Promise<T>, options: { timeout?: number } = {}): Promise<T> {
+  return context.prisma.$transaction(fn, { timeout: options.timeout ?? 20_000, maxWait: 10_000 })
 }
 
 const LOCKABLE = new Set([
