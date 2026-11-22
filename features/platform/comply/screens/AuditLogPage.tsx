@@ -63,7 +63,7 @@ export default async function AuditLogPage({ searchParams }: { searchParams: Pro
             <TabbedTable label="Audit log" tabKey="area" path="/dashboard/platform/audit-log" params={{ area: group, q }} data={data} empty="No entries." head={[{ label: 'When' }, { label: 'Who' }, { label: 'Action' }, { label: 'Record' }, { label: 'Change' }]} row={(e) => (
               <tr key={e.id} className="align-top">
                 <Td className="whitespace-nowrap tabular-nums">{when(e.occurredAt)}</Td>
-                <Td>{e.actor?.name ?? e.actorLabel ?? 'System'}{e.ipAddress ? <div className="text-xs text-muted-foreground">{e.ipAddress}</div> : null}</Td>
+                <Td>{e.actor?.name ?? e.actorLabel ?? 'System'}{e.ipAddress && !/^(::1|127\.|::ffff:127\.)/.test(e.ipAddress) ? <div className="text-xs text-muted-foreground">{e.ipAddress}</div> : null}</Td>
                 <Td className="min-w-40">{actionText(e.action)}{e.reason ? <div className="text-xs text-muted-foreground">{e.reason}</div> : null}</Td>
                 <Td className="whitespace-nowrap text-xs">{(() => { const [name, href] = RECORDS[e.entityType] ?? [label(e.entityType)]; return href && e.entityId ? <RowLink href={href(e.entityId)}>Open {name.toLowerCase()}</RowLink> : name })()}</Td>
                 <Td className="min-w-56 max-w-md break-words text-xs">{changeText(e.before) ? <div className="text-muted-foreground">Before: {changeText(e.before)}</div> : null}{changeText(e.after) ? <div>{e.before ? 'After: ' : ''}{changeText(e.after)}</div> : null}</Td>

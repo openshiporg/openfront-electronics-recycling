@@ -32,8 +32,8 @@ export async function PlatformPage({ route, title, meta, tone, actions, children
   const nav = platformNavItems.find((i) => i.href === route)
   const group = platformNavGroups.find((g) => g.id === nav?.group)
   const breadcrumbs = [
-    { type: 'link' as const, label: 'Dashboard', href: '/dashboard' },
-    ...(group ? [{ type: 'page' as const, label: group.title }] : []),
+    { type: 'link' as const, label: 'Dashboard', href: '/dashboard/platform/today' },
+    ...(group && group.title !== (nav?.title ?? title) ? [{ type: 'page' as const, label: group.title }] : []),
     ...(crumbs.length ? [{ type: 'link' as const, label: nav?.title ?? title, href: `/dashboard${route}` }, ...crumbs.map((c) => (c.href ? { type: 'link' as const, label: c.label, href: c.href } : { type: 'page' as const, label: c.label }))] : [{ type: 'page' as const, label: title }]),
   ]
   const staff = await getStaff()

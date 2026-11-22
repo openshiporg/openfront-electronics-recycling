@@ -5,7 +5,7 @@
  */
 
 type SidebarList = { path: string; isHidden?: boolean | null }
-type SidebarUser = { role?: { canAccessDashboard?: boolean | null } | null } | null | undefined
+type SidebarUser = { role?: { canAccessDashboard?: boolean | null; canManageSettings?: boolean | null } | null } | null | undefined
 
 /** Only an explicit false hides navigation; an unknown user is left to the middleware. */
 export function canUseDashboardNav(user: SidebarUser) {
@@ -32,4 +32,12 @@ export function visiblePlatformItems<T extends { href: string }>(
     const slug = item.href.split('/platform/')[1]?.split(/[/?#]/)[0]
     return !slug || !hiddenPaths.has(slug)
   })
+}
+
+/**
+ * The raw record browser (every Keystone list) is an administrator's tool. Staff who do
+ * not manage settings work from the platform pages, which are built for their role.
+ */
+export function canBrowseRecords(user: SidebarUser) {
+  return user?.role?.canAccessDashboard === true && user.role.canManageSettings === true
 }
