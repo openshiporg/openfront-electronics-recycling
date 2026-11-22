@@ -10,8 +10,12 @@ export type Staff = { id: string; name: string; email: string; role: StaffRole }
 
 const ROLE_FIELDS = 'id name canAccessDashboard canManageSettings canManageUsers canManageBuyers canManageLots canAwardLots canSeeSealedBidAmountsBeforeClose canManageClients canManageJobs canDispatch canCollect canReceive canAuditAssets canSanitize canVerifySanitization canIssueCertificates canManageDownstream canManagePayments canRefund canManageSettlements canViewReports canManageOnboarding'
 
+// One business per deployment: every date on the platform is shown in the store's time zone, named.
+let storeTimeZone: string | undefined
+
 export async function getStaff(): Promise<Staff | null> {
-  const result = await platformRequest<{ authenticatedItem: any }>(`query Me { authenticatedItem { ... on User { id name email role { ${ROLE_FIELDS} } } } }`)
+  const result = await platformRequest<{ authenticatedItem: any; settings: { timezone?: string | null } | null }>(`query Me { authenticatedItem { ... on User { id name email role { ${ROLE_FIELDS} } } } settings: storeSettings(where: { id: 1 }) { timezone } }`)
+  if (result.ok && result.data.settings?.timezone) storeTimeZone = result.data.settings.timezone
   if (!result.ok || !result.data.authenticatedItem?.role) return null
   return result.data.authenticatedItem
 }
@@ -51,8 +55,24 @@ export function LoadError({ error }: { error: string }) {
 // ---------------------------------------------------------------- formatting
 
 export const label = (value?: string | null) => (value ? value.replaceAll('_', ' ') : '—')
-export const when = (value?: string | null) => (value ? new Date(value).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—')
-export const day = (value?: string | null) => (value ? new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—')
+/** Free text written by the system may carry stored values ("purge / crypto_erase"); show them as words. */
+export const prose = (text?: string | null) => (text ? text.replace(/\b[a-z]+(?:_[a-z0-9]+)+\b/g, (m) => m.replaceAll('_', ' ')) : '')
+function inZone(value: string, options: Intl.DateTimeFormatOptions) {
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return '—'
+  try { return d.toLocaleString('en-US', { ...options, timeZone: storeTimeZone }) } catch { return d.toLocaleString('en-US', options) }
+}
+/** Date and time in the store time zone, with the zone named: "Nov 26, 1:00 PM EST". */
+export const when = (value?: string | null) => (value ? inZone(value, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }) : '—')
+/** Calendar date in the store time zone. */
+export const day = (value?: string | null) => {
+  if (!value) return '—'
+  // A plain calendar date ("2026-11-22") has no time, so it must not shift across zones.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return new Date(`${value}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+  return inZone(value, { month: 'short', day: 'numeric', year: 'numeric' })
+}
+/** The store time zone, for page notes ("Times are Eastern"). */
+export const zoneName = () => storeTimeZone ?? 'the store time zone'
 export const usd = (minor?: number | null, currency = 'USD') => (minor === null || minor === undefined ? '—' : new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(minor / 100))
 export const weight = (value?: number | string | null, unit = 'lb') => (value === null || value === undefined || value === '' ? '—' : `${Number(value).toLocaleString('en-US', { maximumFractionDigits: 1 })} ${unit}`)
 

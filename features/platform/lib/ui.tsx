@@ -104,11 +104,11 @@ export function Section({ title, tone, count, actions, children, id, className }
 }
 
 export function Notice({ tone = 'status', children, className }: { tone?: 'status' | 'alert'; children: ReactNode; className?: string }) {
-  return <p role={tone} className={cn('rounded-[6px] border px-3 py-2 text-sm', tone === 'alert' ? 'border-destructive/30 bg-destructive/10 text-destructive' : 'bg-muted/50 text-foreground', className)}>{children}</p>;
+  return <div role={tone} className={cn('rounded-[6px] border px-3 py-2 text-sm', tone === 'alert' ? 'border-destructive/30 bg-destructive/10 text-destructive' : 'bg-muted/50 text-foreground', className)}>{children}</div>;
 }
 
 export function Empty({ children }: { children: ReactNode }) {
-  return <p className="py-4 text-sm text-muted-foreground">{children}</p>;
+  return <div className="py-4 text-sm text-muted-foreground">{children}</div>;
 }
 
 export function Restricted({ children }: { children: ReactNode }) {

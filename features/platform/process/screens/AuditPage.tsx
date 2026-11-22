@@ -23,8 +23,8 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
         const audit = can(staff, 'canAuditAssets')
         return (
           <div className="mx-auto grid w-full max-w-3xl gap-5">
-            <form action="/dashboard/platform/audit" className="flex gap-2">
-              <select name="job" defaultValue={jobId} className="h-9 min-w-0 flex-1 rounded-[6px] border bg-background px-3 text-sm"><option value="">Choose a job</option>{r.data.jobs.map((j: any) => <option key={j.id} value={j.id}>{j.jobNumber} · {j.organization?.name} · {j.assetsCount} assets</option>)}</select>
+            <form action="/dashboard/platform/audit" className="flex min-w-0 gap-2">
+              <select name="job" defaultValue={jobId} className="h-9 w-0 min-w-0 flex-1 rounded-[6px] border bg-background px-3 text-sm"><option value="">Choose a job</option>{r.data.jobs.map((j: any) => <option key={j.id} value={j.id}>{j.jobNumber} · {j.organization?.name} · {j.assetsCount} assets</option>)}</select>
               <button className="h-9 rounded-[6px] border px-3 text-sm">Open</button>
             </form>
             {!job ? <Empty>Choose a received job to start auditing.</Empty> : (
