@@ -132,7 +132,7 @@ export async function HomePage() {
 
       <section className="ar-close" aria-label="Why buy and recycle with us">
         <div className="ar-wrap ar-close-in">
-          <div className="ar-close-block"><h2>{certList.length ? 'Certified and accountable' : 'Every device accounted for'}</h2></div>
+          <div className="ar-close-block"><h2>Every device accounted for</h2></div>
           <div className="ar-close-items">
             {certList.slice(0, 2).map((c) => (
               <div className="ar-close-item" key={c.id}><BadgeCheck size={30} aria-hidden="true" /><span>{c.name}{c.certificateNumber ? <><br /><small className="ar-muted">No. {c.certificateNumber}</small></> : null}</span></div>

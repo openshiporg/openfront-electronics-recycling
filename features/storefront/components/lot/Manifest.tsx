@@ -1,12 +1,10 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { specText } from '../../lib/format'
 
 type Line = { id: string; lineNumber: number; category: string; manufacturer: string; model: string; partNumber: string; description: string; specs: Record<string, unknown>; cosmeticGrade: string; functionalGrade: string; quantity: number; unit: string; serials: string[]; notes: string }
 
-function specText(specs: Record<string, unknown>) {
-  return Object.entries(specs || {}).filter(([, v]) => v != null && v !== '').map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`).join(', ')
-}
 
 /** U3: the full manifest. Serial numbers fold away per line. */
 const SORTS: Record<string, (a: Line, b: Line) => number> = {
@@ -53,7 +51,7 @@ export function Manifest({ lines }: { lines: Line[] }) {
               <td data-label="Line">{l.lineNumber}</td>
               <td data-label="Item">
                 <strong>{itemName(l)}</strong>
-                {l.manufacturer || l.model ? <div className="ar-small ar-muted">{l.description}</div> : null}
+                {(l.manufacturer || l.model) && l.description && l.description !== [l.manufacturer, l.model].filter(Boolean).join(' ') ? <div className="ar-small ar-muted">{l.description}</div> : null}
                 {l.notes ? <div className="ar-small ar-muted">{l.notes}</div> : null}
                 {matchedSerial(l).length ? <div className="ar-small" style={{ color: 'var(--ar-yellow)' }}>Serial {matchedSerial(l).slice(0, 3).join(', ')}{matchedSerial(l).length > 3 ? '…' : ''}</div> : null}
                 {l.serials.length ? (

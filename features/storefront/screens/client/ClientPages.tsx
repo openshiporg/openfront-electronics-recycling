@@ -90,7 +90,7 @@ export async function ClientJobPage({ params, searchParams }: { params: Promise<
   const q = j.quote
   const stopped = ['declined', 'cancelled', 'on_hold'].includes(j.status)
   return (
-    <AccountShell kind="client" tab="jobs" title={`Job ${j.jobNumber}`} lede={<span style={{ display: 'inline-flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}><StatusPill status={j.status} text={STAGE_LABELS[j.status]} /> {j.type === 'drop_off' ? 'Drop-off' : 'Pickup'}{j.site ? ` · ${j.site}` : ''}</span>} crumbs={[{ href: '/client', label: 'Jobs' }, { label: j.jobNumber }]}>
+    <AccountShell kind="client" tab="jobs" title={`Job ${j.jobNumber}`} lede={<span className="ar-meta-line"><StatusPill status={j.status} text={STAGE_LABELS[j.status]} /><span>{j.type === 'drop_off' ? 'Drop-off' : 'Pickup'}</span>{j.site ? <span>{j.site}</span> : null}</span>} crumbs={[{ href: '/client', label: 'Jobs' }, { label: j.jobNumber }]}>
       <div className="ar-stack" style={{ display: 'grid', gap: 18 }}>
         {isNew ? <Notice tone="ok" title={`Request ${j.jobNumber} sent`}>We build your quote and email you when it is ready, usually within one business day. You accept it here.</Notice> : null}
         {stopped ? (

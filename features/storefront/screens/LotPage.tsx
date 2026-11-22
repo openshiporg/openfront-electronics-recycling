@@ -53,7 +53,7 @@ export async function LotPage({ params }: { params: Promise<{ lotNumber: string 
       <PageHead
         title={lot.title}
         crumbs={[{ href: '/', label: 'Home' }, { href: '/lots', label: 'Lots' }, ...(lot.saleEvent ? [{ label: lot.saleEvent.title }] : []), { label: lot.lotNumber }]}
-        lede={<span style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}><span className="ar-pill ar-pill-y">Lot {lot.lotNumber}</span><StatusPill status={lot.status} />{lot.category ? <span className="ar-muted">{lot.category}</span> : null}</span>}
+        lede={<span className="ar-meta-line"><span className="ar-pill ar-pill-y">Lot {lot.lotNumber}</span><StatusPill status={lot.status} />{lot.category ? <span className="ar-muted">{lot.category}</span> : null}</span>}
       />
       <div className="ar-wrap ar-page">
         <div className="ar-split">

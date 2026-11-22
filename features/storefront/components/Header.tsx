@@ -25,6 +25,8 @@ export function Header({ businessName, logoUrl, account }: Props) {
   const pathname = usePathname() || '/'
   const [open, setOpen] = useState(false)
   useEffect(() => setOpen(false), [pathname])
+  // Recycling clients are not buyers: the buyer-only note is not for them.
+  const clientSide = pathname.startsWith('/client') || account?.href === '/client'
   return (
     <header>
       <div className="ar-top">
@@ -49,7 +51,7 @@ export function Header({ businessName, logoUrl, account }: Props) {
             <span>Data destruction</span>
           </div>
           <div className="ar-top-right">
-            <span className="ar-approved"><Lock size={13} aria-hidden="true" /> Approved buyers only</span>
+            {clientSide ? null : <span className="ar-approved"><Lock size={13} aria-hidden="true" /> Approved buyers only</span>}
             <Link className="ar-btn ar-btn-primary ar-btn-top ar-top-login" href={account?.href ?? '/signin'}>
               <UserRound size={15} aria-hidden="true" /> {account?.label ?? 'Buyer login'}
             </Link>
@@ -65,6 +67,7 @@ export function Header({ businessName, logoUrl, account }: Props) {
           {NAV.map((item) => (
             <Link key={item.href} href={item.href} aria-current={item.match(pathname) ? 'page' : undefined}>{item.label}</Link>
           ))}
+          {/* Phone menu only: on wider screens the yellow top-bar button is the one account link. */}
           {account ? (
             <Link className="ar-nav-account" href={account.href} aria-current={pathname.startsWith(account.href) ? 'page' : undefined}>{account.label}</Link>
           ) : (

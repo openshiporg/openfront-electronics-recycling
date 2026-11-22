@@ -34,7 +34,7 @@ export async function InvoicePage({ kind, params, searchParams }: { kind: 'buyer
   const reported = inv.payments.filter((p: any) => p.status === 'reported')
   const bill = inv.billTo || {}
   return (
-    <AccountShell kind={kind} tab="invoices" title={`Invoice ${inv.invoiceNumber}`} lede={<span style={{ display: 'inline-flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}><StatusPill status={inv.isOverdue ? 'overdue' : inv.status} text={inv.isOverdue ? 'Overdue' : undefined} /> Issued {date(inv.issuedAt, tz)} · due {date(inv.dueAt, tz)}</span>} crumbs={[{ href: base, label: 'Account' }, { href: `${base}/invoices`, label: 'Invoices' }, { label: inv.invoiceNumber }]} actions={<FileButton what="invoice" id={inv.invoiceNumber} label="Invoice PDF" />}>
+    <AccountShell kind={kind} tab="invoices" title={`Invoice ${inv.invoiceNumber}`} lede={<span className="ar-meta-line"><StatusPill status={inv.isOverdue ? 'overdue' : inv.status} text={inv.isOverdue ? 'Overdue' : undefined} /><span>Issued {date(inv.issuedAt, tz)}</span><span>Due {date(inv.dueAt, tz)}</span></span>} crumbs={[{ href: base, label: 'Account' }, { href: `${base}/invoices`, label: 'Invoices' }, { label: inv.invoiceNumber }]} actions={<FileButton what="invoice" id={inv.invoiceNumber} label="Invoice PDF" />}>
       {returned ? (
         <div style={{ marginBottom: 18 }}>
           {returned === 'captured' ? <Notice tone="ok" title="Payment received">Thank you. The invoice is updated.</Notice>

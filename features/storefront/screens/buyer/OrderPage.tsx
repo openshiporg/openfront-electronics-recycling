@@ -29,7 +29,7 @@ export async function OrderPage({ params }: { params: Promise<{ orderNumber: str
   const DAY_ORDER = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
   const hours = p?.hours ? Object.entries(p.hours).filter(([, v]) => v).sort(([a], [b]) => DAY_ORDER.indexOf(a.slice(0, 3).toLowerCase()) - DAY_ORDER.indexOf(b.slice(0, 3).toLowerCase())) : []
   return (
-    <AccountShell kind="buyer" tab="orders" title={`Order ${o.orderNumber}`} lede={<span style={{ display: 'inline-flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}><StatusPill status={o.status} /> Lot <Link className="ar-textlink" href={`/lots/${o.lotNumber}`}>{o.lotNumber}</Link><span>{o.lotTitle}</span></span>} crumbs={[{ href: '/buyer', label: 'Account' }, { href: '/buyer/orders', label: 'Orders' }, { label: o.orderNumber }]}>
+    <AccountShell kind="buyer" tab="orders" title={`Order ${o.orderNumber}`} lede={<span className="ar-meta-line"><StatusPill status={o.status} /><span>Lot <Link className="ar-textlink" href={`/lots/${o.lotNumber}`}>{o.lotNumber}</Link></span><span>{o.lotTitle}</span></span>} crumbs={[{ href: '/buyer', label: 'Account' }, { href: '/buyer/orders', label: 'Orders' }, { label: o.orderNumber }]}>
       <div className="ar-stack" style={{ display: 'grid', gap: 18 }}>
         {['defaulted', 'cancelled'].includes(o.status) ? <Notice tone="error" title={`This order is ${label(o.status).toLowerCase()}`}>Email us if you think this is wrong.</Notice> : (
           <section className="ar-panel" aria-label="Progress"><Timeline stages={STAGES} current={o.status} labels={STAGE_LABELS} /></section>

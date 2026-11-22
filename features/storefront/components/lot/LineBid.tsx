@@ -93,12 +93,12 @@ export function LineBid({ lotNumber, lines, currency, open, mayBid, myLines }: {
             {parsed.map(({ line, text, unit, bad: isBad }) => (
               <tr key={line.id}>
                 <td data-label="Line">{line.lineNumber}</td>
-                <td data-label="Item"><strong>{[line.manufacturer, line.model].filter(Boolean).join(' ') || line.description}</strong>{line.manufacturer || line.model ? <div className="ar-small ar-muted">{line.description}</div> : null}</td>
+                <td data-label="Item"><strong>{[line.manufacturer, line.model].filter(Boolean).join(' ') || line.description}</strong>{(line.manufacturer || line.model) && line.description && line.description !== [line.manufacturer, line.model].filter(Boolean).join(' ') ? <div className="ar-small ar-muted">{line.description}</div> : null}</td>
                 <td data-label="Grade">{[line.cosmeticGrade, line.functionalGrade].filter(Boolean).join(' / ') || '—'}</td>
                 <td data-label="Qty" className="ar-num">{line.quantity}</td>
                 {editable || myLines.length ? (
                   <>
-                    <td data-label="Unit price">
+                    <td data-label="Unit price" className={editable ? 'ar-td-input' : undefined}>
                       {editable ? (
                         <input className="ar-input ar-num" style={{ minWidth: 110, borderColor: isBad ? 'var(--ar-red)' : undefined }} inputMode="decimal" aria-label={`Unit price for line ${line.lineNumber}`} aria-invalid={isBad} value={text} onChange={(e) => { setConfirming(false); setPrices((p) => ({ ...p, [line.id]: e.target.value })) }} placeholder="—" />
                       ) : <span className="ar-num">{unit ? money(unit, currency) : '—'}</span>}

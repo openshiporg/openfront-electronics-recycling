@@ -110,3 +110,32 @@ export function docParagraphs(doc: any): Array<{ heading: boolean; text: string 
   const text = (n: any): string => (typeof n?.text === 'string' ? n.text : Array.isArray(n?.children) ? n.children.map(text).join('') : '')
   return doc.map((n) => ({ heading: n?.type === 'heading', text: text(n) })).filter((p) => p.text.trim())
 }
+
+/** Known spec keys and how each value reads on its own. */
+const SPEC_FORMAT: Record<string, (v: string) => string> = {
+  cpu: (v) => v,
+  ramGb: (v) => `${v} GB RAM`,
+  ram: (v) => /ram/i.test(v) ? v : `${v} RAM`,
+  storage: (v) => v,
+  capacity: (v) => v,
+  screen: (v) => `${v} screen`,
+  size: (v) => v,
+  resolution: (v) => v,
+  ports: (v) => /port/i.test(v) ? v : `${v} ports`,
+  interface: (v) => v,
+  carrier: (v) => `Carrier: ${v}`,
+}
+
+/** "someKey_name" → "Some key name". */
+export function tidyKey(key: string) {
+  const words = key.replace(/_/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Za-z])(\d)/g, '$1 $2').trim().toLowerCase()
+  return words.replace(/\bgb\b/g, 'GB').replace(/\btb\b/g, 'TB').replace(/\bcpu\b/g, 'CPU').replace(/\bram\b/g, 'RAM').replace(/^./, (c) => c.toUpperCase())
+}
+
+/** Plain-words specs: "Apple M1 · 8 GB RAM · 256 GB". Unknown keys read "Label: value". */
+export function specText(specs: Record<string, unknown> | null | undefined) {
+  return Object.entries(specs || {})
+    .filter(([, v]) => v != null && v !== '' && typeof v !== 'object')
+    .map(([k, v]) => (SPEC_FORMAT[k] ? SPEC_FORMAT[k](String(v)) : `${tidyKey(k)}: ${v}`))
+    .join(' · ')
+}
