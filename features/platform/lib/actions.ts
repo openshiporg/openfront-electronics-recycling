@@ -16,7 +16,7 @@ export async function runOperation(name: string, input: unknown): Promise<Action
   return result
 }
 
-/** Read-only custom query from a client component (previews, bid sheet checks). */
+/** Read-only custom query from a client component (import checks, bid sheet checks). */
 export async function readOperation(name: string, input: unknown): Promise<ActionResult> {
   const result = await platformQuery(name, input)
   return result.ok ? { success: true, data: result.data } : { success: false, error: result.error }

@@ -2,6 +2,7 @@
 
 import { useState, useTransition, type FormEvent, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
+import { textToDocument } from './document'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -19,12 +20,12 @@ import { deleteItem, runOperation, saveItem, type ActionResult } from './actions
 export type FieldSpec = {
   name: string
   label: string
-  type?: 'text' | 'textarea' | 'number' | 'money' | 'percent' | 'date' | 'datetime' | 'time' | 'select' | 'multiselect' | 'checkbox' | 'file' | 'files' | 'email' | 'hidden' | 'lines' | 'json'
+  type?: 'text' | 'textarea' | 'number' | 'money' | 'percent' | 'date' | 'datetime' | 'time' | 'select' | 'multiselect' | 'checkbox' | 'file' | 'files' | 'email' | 'hidden' | 'lines' | 'json' | 'document'
   /** Keystone relationship: a select becomes { connect: { id } }, a multiselect { set: [...] }. */
   relation?: boolean
   options?: Array<{ value: string; label: string }>
   required?: boolean
-  defaultValue?: string | number | boolean | null
+  defaultValue?: string | number | boolean | null | string[]
   hint?: string
   wide?: boolean
   placeholder?: string
@@ -66,6 +67,7 @@ export async function collect(form: FormData, fields: FieldSpec[], forUpdate = f
         break
       }
       case 'multiselect': out[f.name] = form.getAll(f.name).map(String); break
+      case 'document': out[f.name] = textToDocument(String(raw ?? '')); break
       case 'json': {
         try { out[f.name] = raw ? JSON.parse(String(raw)) : null } catch { throw new Error(`${f.label} is not valid JSON.`) }
         break
@@ -170,7 +172,7 @@ export function Inputs({ fields, prefix }: { fields: FieldSpec[]; prefix: string
             </fieldset>
           )
         }
-        if (f.type === 'textarea' || f.type === 'lines' || f.type === 'json') control = <Textarea id={id} name={f.name} required={f.required} defaultValue={initial(f)} placeholder={f.placeholder} rows={f.type === 'textarea' ? 3 : 5} className={f.type !== 'textarea' ? 'font-mono text-xs' : undefined} />
+        if (f.type === 'textarea' || f.type === 'lines' || f.type === 'json' || f.type === 'document') control = <Textarea id={id} name={f.name} required={f.required} defaultValue={initial(f)} placeholder={f.placeholder} rows={f.type === 'textarea' ? 3 : 5} className={f.type === 'lines' || f.type === 'json' ? 'font-mono text-xs' : undefined} />
         else if (f.type === 'select') control = (
           <select id={id} name={f.name} required={f.required} defaultValue={initial(f)} className={selectClass}>
             {!f.required ? <option value="">—</option> : null}
@@ -183,7 +185,7 @@ export function Inputs({ fields, prefix }: { fields: FieldSpec[]; prefix: string
           const step = f.type === 'money' || f.type === 'percent' ? '0.01' : f.type === 'number' ? 'any' : undefined
           control = <Input id={id} name={f.name} type={type} step={step} inputMode={step ? 'decimal' : undefined} required={f.required} defaultValue={initial(f)} placeholder={f.placeholder} className={f.type === 'money' ? 'font-mono' : undefined} />
         }
-        return <Field key={f.name} id={id} label={f.label} wide={f.wide || f.type === 'textarea' || f.type === 'lines' || f.type === 'json'} hint={f.hint}>{control}</Field>
+        return <Field key={f.name} id={id} label={f.label} wide={f.wide || f.type === 'textarea' || f.type === 'lines' || f.type === 'json' || f.type === 'document'} hint={f.hint}>{control}</Field>
       })}
     </>
   )

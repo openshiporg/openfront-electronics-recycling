@@ -1,5 +1,6 @@
 // Bidding rules: ranking, increments, soft close, eligibility, award plans.
 // Pure functions; no database or framework imports.
+import { RuleError } from './lifecycle'
 
 export type RankableBid = { id: string; companyId: string; amountMinor: number; submittedAt: Date | string; status?: string }
 
@@ -68,15 +69,15 @@ export function perLineTotal(lines: LotLineForBid[], prices: LineBidInput[]) {
   const out: Array<{ lotLineId: string; unitPriceMinor: number; quantity: number; totalMinor: number }> = []
   for (const price of prices) {
     const line = byId.get(price.lotLineId)
-    if (!line) throw new Error('A bid line does not belong to this lot.')
-    if (seen.has(price.lotLineId)) throw new Error(`Line ${line.lineNumber} appears twice.`)
+    if (!line) throw new RuleError('A bid line does not belong to this lot.')
+    if (seen.has(price.lotLineId)) throw new RuleError(`Line ${line.lineNumber} appears twice.`)
     seen.add(price.lotLineId)
     const unit = Math.round(Number(price.unitPriceMinor))
-    if (!Number.isSafeInteger(unit) || unit < 0) throw new Error(`Line ${line.lineNumber} has an invalid price.`)
+    if (!Number.isSafeInteger(unit) || unit < 0) throw new RuleError(`Line ${line.lineNumber} has an invalid price.`)
     if (unit === 0) continue
     out.push({ lotLineId: line.id, unitPriceMinor: unit, quantity: line.quantity, totalMinor: unit * line.quantity })
   }
-  if (!out.length) throw new Error('Enter a price on at least one line.')
+  if (!out.length) throw new RuleError('Enter a price on at least one line.')
   return { lines: out, totalMinor: out.reduce((s, l) => s + l.totalMinor, 0) }
 }
 
@@ -110,12 +111,12 @@ export function planPerLineAward(bids: GridBid[], selection: AwardSelection[]) {
   const seenLines = new Set<string>()
   const groups = new Map<string, { bid: GridBid; lines: Array<{ lotLineId: string; bidLineId: string; quantity: number; unitPriceMinor: number; totalMinor: number }> }>()
   for (const pick of selection) {
-    if (seenLines.has(pick.lotLineId)) throw new Error('A line can be awarded to one buyer only.')
+    if (seenLines.has(pick.lotLineId)) throw new RuleError('A line can be awarded to one buyer only.')
     seenLines.add(pick.lotLineId)
     const bid = byBid.get(pick.bidId)
-    if (!bid) throw new Error('A chosen bid is no longer valid.')
+    if (!bid) throw new RuleError('A chosen bid is no longer valid.')
     const line = bid.lines.find((l) => l.lotLineId === pick.lotLineId)
-    if (!line) throw new Error('The chosen bid has no price for that line.')
+    if (!line) throw new RuleError('The chosen bid has no price for that line.')
     const group = groups.get(bid.id) ?? { bid, lines: [] }
     group.lines.push({ lotLineId: line.lotLineId, bidLineId: line.id, quantity: line.quantity, unitPriceMinor: line.unitPriceMinor, totalMinor: line.unitPriceMinor * line.quantity })
     groups.set(bid.id, group)

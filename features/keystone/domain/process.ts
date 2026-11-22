@@ -122,7 +122,7 @@ export async function importErasureReport(context: Ctx, args: { file: FileInput;
   const map = proposeMapping(headers, ERASURE_FIELDS)
   if (map.serial == null) fail('The report has no serial number column.')
   if (map.result == null) fail('The report has no result or status column.')
-  const parsed = sheet.rows.slice(headerRow + 1).filter((r) => r.some((c) => String(c ?? '').trim())).map((r, i) => {
+  const parsed = sheet.rows.slice(headerRow + 1).map((r, i) => [r, i] as const).filter(([r]) => r.some((c) => String(c ?? '').trim())).map(([r, i]) => {
     const serial = String(r[map.serial] ?? '').trim()
     const result = erasureResult(r[map.result])
     const technique = erasureTechnique(map.method != null ? r[map.method] : '')
@@ -370,6 +370,23 @@ export async function issueCertificate(context: Ctx, args: { jobId: string; type
   }, BULK)
   afterCommit(context)
   return result
+}
+
+/**
+ * Rebuilds a certificate's snapshot and PDF from the records as they stand. Only for
+ * a certificate nobody has received yet (the starter seed, after it sets the history's
+ * dates); a correction after issue is revoke and reissue.
+ */
+export async function rerenderCertificate(tx: Tx, certificateId: string) {
+  const cert = await tx.certificate.findUnique({ where: { id: certificateId }, include: { issuedBy: { select: { name: true } }, replaces: { select: { certificateNumber: true } } } })
+  if (!cert) fail('Certificate not found.')
+  const job = await tx.job.findUnique({ where: { id: cert.jobId } })
+  const snapshot = await certificateSnapshot(tx, job, cert.type, cert.issuedBy?.name ?? 'Staff')
+  const pdf = await certificatePdf(tx, { ...cert, snapshot, replacesNumber: cert.replaces?.certificateNumber })
+  const old = cert.pdfId
+  const file = await storeFile(tx, { filename: `${cert.certificateNumber}.pdf`, mimeType: 'application/pdf', bytes: pdf, purpose: 'certificate', ownerClientOrganizationId: job.organizationId, uploadedById: cert.issuedById })
+  await tx.certificate.update({ where: { id: cert.id }, data: { snapshot, pdfId: file.id } })
+  if (old) await tx.storedFile.delete({ where: { id: old } })
 }
 
 export async function revokeCertificate(context: Ctx, args: { certificateId: string; reason: string; reissue?: boolean }) {

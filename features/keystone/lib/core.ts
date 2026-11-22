@@ -194,7 +194,7 @@ export async function command<T>(fn: () => Promise<T>): Promise<{ success: boole
   try {
     return { success: true, error: null, data: await fn() }
   } catch (error) {
-    if (error instanceof DomainError) return { success: false, error: error.message, data: null }
+    if (error instanceof DomainError || (error as Error)?.name === 'RuleError') return { success: false, error: (error as Error).message, data: null }
     const code = (error as any)?.code
     if (code === 'P2002') return { success: false, error: 'This was already done. Reload to see the latest state.', data: null }
     if (code === 'P2034' || code === 'P2028') return { success: false, error: 'Another change was saved at the same moment. Try again.', data: null }

@@ -254,3 +254,27 @@ test('decline all bids leaves the lot unsold; relist makes a linked draft', { sk
   assert.equal(copy.relistedFromId, lot.id)
   assert.equal(copy.lines.length, lot.lines.length)
 })
+
+// S17: a pickup books into the facility's slot grid; a full slot refuses; cancel frees it.
+test('dock: booking snaps to the slot grid, a full slot refuses, cancel frees it', { skip }, async () => {
+  const orders = require(path.join(root, 'features/keystone/domain/orders.ts'))
+  const s = await f.settings(ctx.prisma)
+  const tz = s.timezone
+  const all = { mon: '08:00-16:00', tue: '08:00-16:00', wed: '08:00-16:00', thu: '08:00-16:00', fri: '08:00-16:00', sat: '08:00-16:00', sun: '08:00-16:00' }
+  const facility = await ctx.prisma.facility.create({ data: { name: `Dock ${f.key().slice(0, 6)}`, code: `D${f.key().slice(0, 6)}`, hours: all, dockSlotMinutes: 60, dockSlotsPerWindow: 1, isActive: true } })
+  const day = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(Date.now() + 2 * 86_400_000))
+  const { zonedInstant } = require(path.join(root, 'features/keystone/lib/rules/time.ts'))
+  const tenTwenty = zonedInstant(day, '10:20', tz).toISOString()
+  const job = await ctx.prisma.job.create({ data: { jobNumber: await f.nextNumber(ctx.prisma, 'job', 'JOB-'), status: 'accepted' } })
+  const appt = await orders.bookDockAppointment(staffCtx, { facilityId: facility.id, startsAt: tenTwenty, jobId: job.id, driverName: 'Sam' })
+  assert.equal(new Date(appt.startsAt).toISOString(), zonedInstant(day, '10:00', tz).toISOString())
+  const job2 = await ctx.prisma.job.create({ data: { jobNumber: await f.nextNumber(ctx.prisma, 'job', 'JOB-'), status: 'accepted' } })
+  await assert.rejects(orders.bookDockAppointment(staffCtx, { facilityId: facility.id, startsAt: tenTwenty, jobId: job2.id }), /slot is full/)
+  await assert.rejects(orders.bookDockAppointment(staffCtx, { facilityId: facility.id, startsAt: zonedInstant(day, '17:30', tz).toISOString(), jobId: job2.id }), /outside .* dock hours/)
+  const board = await orders.dockDay(staffCtx, { facilityId: facility.id, date: day })
+  assert.equal(board.slots.find((x) => new Date(x.startsAt).getTime() === new Date(appt.startsAt).getTime()).free, 0)
+  await orders.setDockAppointmentStatus(staffCtx, { appointmentId: appt.id, status: 'cancelled', note: 'Truck broke down' })
+  await assert.rejects(orders.setDockAppointmentStatus(staffCtx, { appointmentId: appt.id, status: 'arrived' }), /cannot be marked arrived/)
+  const again = await orders.bookDockAppointment(staffCtx, { facilityId: facility.id, startsAt: tenTwenty, jobId: job2.id })
+  assert.equal(again.status, 'booked')
+})

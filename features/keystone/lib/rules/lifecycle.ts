@@ -1,5 +1,13 @@
 // State machines (§3). Each table lists the statuses a transition may start from.
 
+/** A business rule said no. Commands show its message to the person as is. */
+export class RuleError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'RuleError'
+  }
+}
+
 export const JOB_TRANSITIONS: Record<string, { from: string[]; to: string }> = {
   quote: { from: ['requested', 'quoted'], to: 'quoted' },
   accept: { from: ['quoted'], to: 'accepted' },
@@ -19,8 +27,8 @@ export const AFTER_COLLECTION = ['collected', 'received', 'processing', 'complet
 
 export function jobTransition(action: keyof typeof JOB_TRANSITIONS | string, current: string) {
   const rule = JOB_TRANSITIONS[action]
-  if (!rule) throw new Error(`Unknown job action ${action}.`)
-  if (!rule.from.includes(current)) throw new Error(`A job that is ${current.replace(/_/g, ' ')} cannot be moved to ${rule.to.replace(/_/g, ' ')}.`)
+  if (!rule) throw new RuleError(`Unknown job action ${action}.`)
+  if (!rule.from.includes(current)) throw new RuleError(`A job that is ${current.replace(/_/g, ' ')} cannot be moved to ${rule.to.replace(/_/g, ' ')}.`)
   return rule.to
 }
 

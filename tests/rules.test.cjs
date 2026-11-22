@@ -239,3 +239,23 @@ test('password reset link: buyers and clients go to the storefront page, staff t
   assert.equal(passwordResetUrl('https://riverbend-itad.com', 'client', 't', 'x@y.com'), 'https://riverbend-itad.com/reset-password?token=t&email=x%40y.com')
   assert.equal(passwordResetUrl('https://riverbend-itad.com', 'staff', 't', 'x@y.com'), 'https://riverbend-itad.com/dashboard/reset?token=t&email=x%40y.com')
 })
+
+// ---------------------------------------------------------------- dock slots
+
+test('dock slots follow the facility hours in its time zone, across DST', () => {
+  const hours = { mon: '07:30-16:30', fri: '07:30-15:00', sat: null }
+  const mon = time.dockSlots({ date: '2026-11-23', hours, slotMinutes: 60, perWindow: 2, timeZone: 'America/New_York', booked: [] })
+  assert.equal(mon.open, true)
+  assert.equal(mon.slots.length, 9) // 07:30 … 15:30
+  assert.equal(mon.slots[0].startsAt.toISOString(), '2026-11-23T12:30:00.000Z') // EST, UTC-5
+  const summer = time.dockSlots({ date: '2026-07-06', hours, slotMinutes: 60, perWindow: 1, timeZone: 'America/New_York', booked: [] })
+  assert.equal(summer.slots[0].startsAt.toISOString(), '2026-07-06T11:30:00.000Z') // EDT, UTC-4
+  assert.equal(time.dockSlots({ date: '2026-11-28', hours, slotMinutes: 60, perWindow: 1, timeZone: 'America/New_York', booked: [] }).open, false)
+})
+
+test('a dock slot counts overlapping bookings against its capacity', () => {
+  const hours = { tue: '08:00-10:00' }
+  const booked = [{ startsAt: '2026-11-24T13:00:00Z', endsAt: '2026-11-24T14:00:00Z' }, { startsAt: '2026-11-24T13:00:00Z', endsAt: '2026-11-24T14:00:00Z' }]
+  const day = time.dockSlots({ date: '2026-11-24', hours, slotMinutes: 60, perWindow: 2, timeZone: 'America/New_York', booked })
+  assert.deepEqual(day.slots.map((s) => [s.taken, s.free]), [[2, 0], [0, 2]])
+})

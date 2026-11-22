@@ -11,10 +11,11 @@ export const User = list({
   access: {
     operation: {
       ...allOperations(isSignedIn),
-      create: permissions.canManageUsers,
+      create: anyPeopleManager,
       delete: permissions.canManageUsers,
     },
     filter: { query: rules.canReadPeople, update: rules.canUpdatePeople },
+    item: { create: portalUserCreate },
   },
   ui: {
     hideCreate: (args) => !permissions.canManageUsers(args),
@@ -49,11 +50,11 @@ export const User = list({
       ],
       defaultValue: 'staff',
       validation: { isRequired: true },
-      access: { create: permissions.canManageUsers, update: permissions.canManageUsers },
+      access: { create: anyPeopleManager, update: permissions.canManageUsers },
     }),
     buyerCompany: relationship({
       ref: 'BuyerCompany.users',
-      access: { create: permissions.canManageUsers, update: anyBuyerManager },
+      access: { create: anyBuyerManager, update: anyBuyerManager },
     }),
     buyerRole: select({
       type: 'enum',
@@ -105,6 +106,14 @@ function anyClientManager(args: { session?: any }) {
 }
 function anyPeopleManager(args: { session?: any }) {
   return anyBuyerManager(args) || anyClientManager(args)
+}
+/** S3/T1: a buyer or client manager may add only a portal user of that kind, tied to a company or organisation, with no staff role. */
+function portalUserCreate({ session, inputData }: { session?: any; inputData: any }) {
+  if (hasPermission(session, 'canManageUsers')) return true
+  if (inputData.role) return false
+  if (inputData.kind === 'buyer') return hasPermission(session, 'canManageBuyers') && Boolean(inputData.buyerCompany) && !inputData.clientOrganization
+  if (inputData.kind === 'client') return hasPermission(session, 'canManageClients') && Boolean(inputData.clientOrganization) && !inputData.buyerCompany
+  return false
 }
 
 const permissionFields = Object.fromEntries(

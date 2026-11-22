@@ -55,7 +55,7 @@ export async function mapManifest(context: Ctx, args: { importId: string; sheetN
   return context.prisma.manifestImport.update({ where: { id: imp.id }, data: { status: 'mapped', sheetName: sheet.sheetName, headerRow, headers, mapping, rowCount: Math.max(0, sheet.rows.length - headerRow - 1), rows: [], validCount: null, errorCount: null } })
 }
 
-/** Apply the mapping to every row and store the preview with errors. */
+/** Apply the mapping to every row and store each row's result and errors. */
 export async function validateManifest(context: Ctx, args: { importId: string }) {
   const imp = await importById(context.prisma, args.importId)
   if (!['uploaded', 'mapped', 'validated'].includes(imp.status)) fail(`This import is ${imp.status}.`)
@@ -224,7 +224,7 @@ export function parseBidSheet(rows: unknown[][], lot: { lines: Array<{ id: strin
   return { lines, problems }
 }
 
-export async function previewBidSheet(context: Ctx, args: { lotNumber: string; file: FileInput }) {
+export async function checkBidSheet(context: Ctx, args: { lotNumber: string; file: FileInput }) {
   const { lot } = await lotForBuyerDownload(context, args.lotNumber)
   if (lot.bidBasis !== 'per_line') fail('This lot is bid as a whole.')
   const decoded = decodeUpload(args.file)
@@ -232,20 +232,20 @@ export async function previewBidSheet(context: Ctx, args: { lotNumber: string; f
   const { rows } = readWorkbook(decoded.bytes)
   const parsed = parseBidSheet(rows, lot)
   const byId = new Map(lot.lines.map((l: any) => [l.id, l]))
-  const preview = parsed.lines.map((l) => {
+  const checkedLines = parsed.lines.map((l) => {
     const line: any = byId.get(l.lotLineId)
     return { lotLineId: l.lotLineId, lineNumber: line.lineNumber, description: line.description, quantity: line.quantity, unitPriceMinor: l.unitPriceMinor, totalMinor: l.unitPriceMinor * line.quantity }
   })
-  return { lines: preview, problems: parsed.problems, totalMinor: preview.reduce((s, l) => s + l.totalMinor, 0) }
+  return { lines: checkedLines, problems: parsed.problems, totalMinor: checkedLines.reduce((s, l) => s + l.totalMinor, 0) }
 }
 
 /** Confirmed bid sheet: stored with the bid for the record, then placed as a bid_sheet bid. */
 export async function placeBidFromSheet(context: Ctx, args: { lotNumber: string; file: FileInput; idempotencyKey: string }) {
   const { companyId, user } = await requireBuyer(context)
-  const preview = await previewBidSheet(context, args)
-  if (preview.problems.length) fail(preview.problems[0])
-  if (!preview.lines.length) fail('The sheet has no prices.')
+  const checked = await checkBidSheet(context, args)
+  if (checked.problems.length) fail(checked.problems[0])
+  if (!checked.lines.length) fail('The sheet has no prices.')
   const decoded = decodeUpload(args.file)!
   const stored = await storeFile(context.prisma, { ...decoded, purpose: 'bid_sheet', ownerBuyerCompanyId: companyId, uploadedById: user.id })
-  return placeBidCore(context, { lotNumber: args.lotNumber, lines: preview.lines.map((l) => ({ lotLineId: l.lotLineId, unitPriceMinor: l.unitPriceMinor })), idempotencyKey: args.idempotencyKey, companyId, userId: user.id, source: 'bid_sheet', sheetFileId: stored.id })
+  return placeBidCore(context, { lotNumber: args.lotNumber, lines: checked.lines.map((l) => ({ lotLineId: l.lotLineId, unitPriceMinor: l.unitPriceMinor })), idempotencyKey: args.idempotencyKey, companyId, userId: user.id, source: 'bid_sheet', sheetFileId: stored.id })
 }

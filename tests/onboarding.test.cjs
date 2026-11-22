@@ -36,6 +36,16 @@ test('basic template: safe to run twice', { skip }, async () => {
   assert.equal(again.starter, undefined)
   const status = await onboarding.onboardingStatus(as)
   assert.equal(status.complete, true)
+  assert.equal(again.counts.certifications, undefined, 'no certification unless the operator gives one')
+})
+
+test('certifications: created only when ticked with a number', { skip }, async () => {
+  const owner = await f.staff(ctx.prisma)
+  const as = await ctx.as(owner.id)
+  const facility = { name: `Riverbend Dayton ${uid()}`, code: `DAY${uid().slice(0, 4)}`, addressLine1: '75 Valley St', city: 'Dayton', region: 'OH', postalCode: '45402', countryCode: 'US' }
+  const before = await ctx.prisma.certification.count()
+  await assert.rejects(onboarding.runElectronicsRecyclingOnboarding(as, input('ops@riverbend-itad.com', { facility, certifications: [{ name: 'R2v3', certificateNumber: '' }] })), /certificate number for R2v3/)
+  assert.equal(await ctx.prisma.certification.count(), before, 'nothing written when a number is missing')
 })
 
 test('full template: starter records through the domain functions', { skip, timeout: 900_000 }, async () => {
@@ -80,6 +90,33 @@ test('full template: starter records through the domain functions', { skip, time
   assert.equal(order.status, 'paid')
   const invoice = await p.invoice.findUnique({ where: { invoiceNumber: starter.records.paidOrder.invoiceNumber } })
   assert.equal(invoice.status, 'paid')
+
+  // A believable history: nothing in the future, each step after the one before.
+  const now = Date.now()
+  const job1 = jobs.find((j) => j.status === 'completed')
+  const t = (d) => new Date(d).getTime()
+  assert.ok(t(job1.createdAt) < t(job1.quoteSentAt) && t(job1.quoteSentAt) < t(job1.quoteAcceptedAt) && t(job1.quoteAcceptedAt) < t(job1.collectedAt) && t(job1.collectedAt) < t(job1.receivedAt) && t(job1.receivedAt) < t(job1.completedAt), 'job 1 steps in order')
+  assert.ok(t(job1.completedAt) < now - 2 * 86_400_000, 'job 1 completed days ago')
+  assert.ok(t(job1.collectedAt) - t(job1.createdAt) > 3 * 86_400_000, 'job 1 history spans days, not minutes')
+  const asked = (job1.requestedDates ?? []).map((d) => t(`${d}T23:59:59Z`))
+  assert.ok(asked.length && asked.every((d) => d < t(job1.completedAt)), 'dates asked come before completion')
+  assert.ok(asked.some((d) => d >= t(job1.createdAt)), 'dates asked come after the request')
+  assert.ok(Math.abs(t(job1.scheduledDate) - t(job1.collectedAt)) < 36 * 3_600_000, 'collected on the scheduled day')
+  const custody = await p.custodyEvent.findMany({ where: { jobId: job1.id }, orderBy: { occurredAt: 'asc' } })
+  const firstOf = (type) => t(custody.find((c) => c.type === type).occurredAt)
+  assert.ok(firstOf('collected') < firstOf('seal_verified') && firstOf('seal_verified') < firstOf('audited') && firstOf('audited') < firstOf('sanitized'), 'custody chain in order')
+  const certs = await p.certificate.findMany({ where: { jobId: job1.id } })
+  assert.ok(certs.every((c) => t(c.issuedAt) > firstOf('sanitized') && t(c.issuedAt) <= t(job1.completedAt)), 'certificates after the wipes, before completion')
+  assert.ok(certs.every((c) => c.snapshot.job.collectedAt && Math.abs(t(c.snapshot.job.collectedAt) - t(job1.collectedAt)) < 1000), 'certificate shows the real collection date')
+  const award = await p.award.findUnique({ where: { orderId: order.id } })
+  const lot6 = await p.lot.findUnique({ where: { id: order.lotId } })
+  const payment = await p.payment.findFirst({ where: { invoiceId: invoice.id } })
+  assert.ok(t(lot6.closedAt) <= t(award.awardedAt) && t(award.awardedAt) <= t(invoice.issuedAt) + 1000 && t(invoice.issuedAt) < t(invoice.paidAt), 'closed, awarded, invoiced, paid')
+  assert.ok(t(invoice.dueAt) > t(invoice.issuedAt) && t(invoice.paidAt) < now, 'due after issue; paid in the past')
+  assert.ok(Math.abs(t(`${payment.paidOn}T12:00:00Z`) - t(invoice.paidAt)) < 36 * 3_600_000, 'paid on the day the money was recorded')
+  const future = await p.auditEvent.count({ where: { occurredAt: { gt: new Date(now) } } })
+  assert.equal(future, 0, 'no audit event in the future')
+  assert.equal(await p.certification.count({ where: { facility: { code: 'CMH' }, certificateNumber: '' } }), 0, 'no certification without a number')
 
   // No placeholder wording anywhere in the starter data.
   const text = JSON.stringify(starter) + JSON.stringify(event) + JSON.stringify(orgs)

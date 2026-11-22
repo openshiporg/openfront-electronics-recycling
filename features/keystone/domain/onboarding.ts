@@ -129,6 +129,7 @@ export async function runElectronicsRecyclingOnboarding(context: Ctx, input: Onb
   const f = input.facility ?? {}
   if (!str(f.addressLine1) || !str(f.city) || !str(f.postalCode)) fail('Enter the facility address.')
   const counts: Record<string, number> = {}
+  const startedAt = new Date()
 
   await context.prisma.$transaction(async (tx: Tx) => {
     // 1. Roles
@@ -197,10 +198,11 @@ export async function runElectronicsRecyclingOnboarding(context: Ctx, input: Onb
       await tx.acceptedItem.create({ data: { name: item.name, categoryId: item.category ? bySlug.get(item.category) ?? null : null, accepted: (item as any).accepted ?? true, feeType: item.feeType, feeMinor: item.feeMinor, notes: item.notes, sortOrder: a } })
       counts.acceptedItems = (counts.acceptedItems ?? 0) + 1
     }
-    // 7. Certifications: only the ones the operator says they hold.
+    // 7. Certifications: only the ones the operator ticked, each with the number they typed.
     for (const cert of input.certifications ?? []) {
       const name = str(cert.name, 40)
       if (!name) continue
+      if (!str(cert.certificateNumber, 80)) fail(`Enter the certificate number for ${name}, or untick it.`)
       if (await tx.certification.findFirst({ where: { name, facilityId: facility.id } })) continue
       await tx.certification.create({ data: { name, certificateNumber: str(cert.certificateNumber, 80), certifyingBody: str(cert.certifyingBody, 120), facilityId: facility.id, expiresOn: cert.expiresOn ? new Date(cert.expiresOn) : null, isPublic: true } })
       counts.certifications = (counts.certifications ?? 0) + 1
@@ -221,6 +223,6 @@ export async function runElectronicsRecyclingOnboarding(context: Ctx, input: Onb
   if (input.template !== 'full') return { counts }
   if (input.starterPassword && String(input.starterPassword).length < 10) fail('Use a starter password of at least 10 characters.')
   const settings = await getSettings(context.prisma)
-  const starter = await seedStarterRecords(context, { businessName, supportEmail: settings.supportEmail, password: input.starterPassword })
+  const starter = await seedStarterRecords(context, { businessName, supportEmail: settings.supportEmail, password: input.starterPassword, since: startedAt })
   return { counts, starter }
 }

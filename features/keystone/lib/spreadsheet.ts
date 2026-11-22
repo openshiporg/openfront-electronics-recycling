@@ -15,7 +15,10 @@ export function readWorkbook(bytes: Buffer, sheetName?: string | null) {
   if (!sheetNames.length) fail('The spreadsheet has no sheets.')
   const name = sheetName && sheetNames.includes(sheetName) ? sheetName : sheetNames[0]
   const sheet = workbook.Sheets[name]
-  const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: false, defval: '', blankrows: false, dateNF: 'yyyy-mm-dd hh:mm' })
+  // Blank rows are kept so row numbers in messages match the rows the person sees.
+  const range = sheet['!ref'] ? XLSX.utils.decode_range(sheet['!ref']) : null
+  const lead: unknown[][] = Array.from({ length: range?.s.r ?? 0 }, () => [])
+  const rows = [...lead, ...XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, raw: false, defval: '', blankrows: true, dateNF: 'yyyy-mm-dd hh:mm' })]
   if (rows.length > MAX_SHEET_ROWS + 20) fail(`Spreadsheets can have at most ${MAX_SHEET_ROWS.toLocaleString()} rows.`)
   return { sheetNames, sheetName: name, rows: rows.map((r) => (Array.isArray(r) ? r : [])) }
 }

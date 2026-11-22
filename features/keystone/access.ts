@@ -98,6 +98,9 @@ export const rules = {
   canUpdatePeople: ({ session }: AccessArgs) => {
     if (!session) return false
     if (hasPermission(session, 'canManageUsers')) return true
+    // Buyer and client managers look after portal users of their kind, never staff.
+    const kinds = [hasPermission(session, 'canManageBuyers') && 'buyer', hasPermission(session, 'canManageClients') && 'client'].filter(Boolean) as string[]
+    if (kinds.length) return { OR: [{ id: { equals: session.itemId } }, { kind: { in: kinds } }] }
     return { id: { equals: session.itemId } }
   },
 }

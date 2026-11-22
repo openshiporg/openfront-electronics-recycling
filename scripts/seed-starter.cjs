@@ -5,7 +5,8 @@
 //
 //   DATABASE_URL=... node scripts/seed-starter.cjs --full \
 //     --owner-email ops@riverbend-itad.com --owner-name "Jordan Hale" \
-//     --business "Riverbend ITAD" --out ~/.config/openfront/er-starter-logins.json
+//     --business "Riverbend ITAD" --out ~/.config/openfront/er-starter-logins.json \
+//     [--certification "R2v3|R2-xx-xxxxx|SERI|2028-03-31"]   (only ones actually held)
 //
 // The owner and starter passwords are written only to --out (mode 600), never to stdout.
 const fs = require('node:fs')
@@ -19,6 +20,16 @@ const opt = (name, fallback) => {
   return i >= 0 ? args[i + 1] : fallback
 }
 const full = args.includes('--full')
+function certifications() {
+  const out = []
+  args.forEach((a, i) => {
+    if (a !== '--certification') return
+    const [name, certificateNumber, certifyingBody, expiresOn] = String(args[i + 1] || '').split('|').map((x) => x.trim())
+    if (!name || !certificateNumber) throw new Error('--certification needs "Name|Number[|Body|Expiry]".')
+    out.push({ name, certificateNumber, certifyingBody: certifyingBody || '', expiresOn: expiresOn || null })
+  })
+  return out
+}
 
 async function main() {
   const url = process.env.DATABASE_URL
@@ -59,7 +70,8 @@ async function main() {
     supportPhone: opt('phone', '(614) 555-0100'),
     timezone: 'America/New_York',
     facility: { name: `${business} Columbus`, code: 'CMH', addressLine1: '2150 Refugee Rd', city: 'Columbus', region: 'OH', postalCode: '43207', countryCode: 'US', phone: '(614) 555-0100' },
-    certifications: [{ name: 'R2v3', certificateNumber: 'R2-25-20418', certifyingBody: 'SERI', expiresOn: '2028-03-31' }],
+    // Only certifications the operator holds, each as --certification "Name|Number|Body|YYYY-MM-DD".
+    certifications: certifications(),
     wireInstructions: `Bank: Huntington National Bank\nAccount name: ${business} LLC\nRouting (ACH/wire): 044000024\nAccount: 01234567890\nReference: your invoice number`,
     template: full ? 'full' : 'basic',
     starterPassword: opt('starter-password'),

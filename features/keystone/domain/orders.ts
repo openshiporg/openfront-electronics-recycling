@@ -1,6 +1,6 @@
 import { audit, dbNow, fail, inTransaction, lockRow, nextNumber, requireBuyer, str, type Ctx, type Tx } from '../lib/core'
 import { restockingFee, strikeOutcome, formatMinor } from '../lib/rules/money'
-import { addBusinessDays } from '../lib/rules/time'
+import { addBusinessDays, dockSlots, zonedInstant } from '../lib/rules/time'
 import { afterCommit, companyUsers, getSettings, notify, staffWith, storeUpload, type FileInput } from '../lib/services'
 import { suspendCompany } from './buyers'
 import { maybeCompleteLot } from './lots'
@@ -216,8 +216,14 @@ export async function bookDockAppointment(context: Ctx, args: { facilityId: stri
     const facility = await tx.facility.findUnique({ where: { id: args.facilityId } })
     if (!facility.isActive) fail('This facility is not active.')
     const minutes = Math.max(15, facility.dockSlotMinutes || 60)
-    const slotStart = new Date(Math.floor(startsAt.getTime() / (minutes * 60_000)) * minutes * 60_000)
-    const endsAt = new Date(slotStart.getTime() + minutes * 60_000)
+    const settings = await getSettings(tx)
+    const localDate = new Intl.DateTimeFormat('en-CA', { timeZone: settings.timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(startsAt)
+    // Snap to the facility's own slot grid for that day (opening time + n slots); refuse outside hours.
+    const grid = dockSlots({ date: localDate, hours: facility.hours, slotMinutes: minutes, perWindow: 1, timeZone: settings.timezone, booked: [] })
+    const slot = grid.slots.find((g) => g.startsAt <= startsAt && startsAt < g.endsAt)
+    if (!slot) fail(grid.open ? `That time is outside ${facility.name}'s dock hours.` : `${facility.name} is closed that day.`)
+    const slotStart = slot!.startsAt
+    const endsAt = slot!.endsAt
     if (slotStart.getTime() < Date.now() - minutes * 60_000) fail('That slot is in the past.')
     const taken = await tx.dockAppointment.count({ where: { facilityId: facility.id, status: { in: ['booked', 'arrived'] }, startsAt: { lt: endsAt }, endsAt: { gt: slotStart }, ...(args.appointmentId ? { id: { not: args.appointmentId } } : {}) } })
     if (taken >= Math.max(1, facility.dockSlotsPerWindow || 1)) fail('That slot is full. Choose another time.')
@@ -251,15 +257,25 @@ export async function bookDockAppointment(context: Ctx, args: { facilityId: stri
   return result
 }
 
-export async function setDockAppointmentStatus(context: Ctx, args: { appointmentId: string; status: string }) {
-  const status = ['arrived', 'done', 'cancelled', 'no_show'].includes(args.status) ? args.status : fail('Choose arrived, done, cancelled or no-show.')
-  return inTransaction(context, async (tx) => {
+/** S17/K8: mark a slot arrived, done, no-show or cancelled. */
+export async function setDockAppointmentStatus(context: Ctx, args: { appointmentId: string; status: string; note?: string }) {
+  const status = str(args.status, 20)
+  const allowed: Record<string, string[]> = { arrived: ['booked'], done: ['booked', 'arrived'], no_show: ['booked'], cancelled: ['booked', 'arrived'] }
+  if (!allowed[status]) fail('Choose arrived, done, no-show or cancelled.')
+  const result = await inTransaction(context, async (tx) => {
     await lockRow(tx, 'DockAppointment', args.appointmentId) || fail('Appointment not found.')
-    const appt = await tx.dockAppointment.findUnique({ where: { id: args.appointmentId } })
-    if (['done', 'cancelled'].includes(appt.status)) fail(`This appointment is already ${appt.status}.`)
-    await audit(tx, { actorId: context.session!.itemId, action: `dock.${status}`, entityType: 'DockAppointment', entityId: appt.id })
-    return tx.dockAppointment.update({ where: { id: appt.id }, data: { status } })
+    const appt = await tx.dockAppointment.findUnique({ where: { id: args.appointmentId }, include: { order: true } })
+    if (!allowed[status].includes(appt.status)) fail(`A slot that is ${appt.status.replace(/_/g, ' ')} cannot be marked ${status.replace(/_/g, ' ')}.`)
+    const note = str(args.note, 500)
+    const updated = await tx.dockAppointment.update({ where: { id: appt.id }, data: { status, ...(note ? { notes: [appt.notes, note].filter(Boolean).join('\n') } : {}) } })
+    if (status === 'cancelled' && appt.order) {
+      await notify(tx, { userIds: await companyUsers(tx, appt.order.companyId), type: 'dock_cancelled', title: `Pickup slot for ${appt.order.orderNumber} cancelled`, body: note || 'Book another slot from your order.', link: `/buyer/orders/${appt.order.orderNumber}` })
+    }
+    await audit(tx, { actorId: context.session!.itemId, action: `dock.${status}`, entityType: 'DockAppointment', entityId: appt.id, before: { status: appt.status }, after: { status }, reason: note || undefined })
+    return updated
   })
+  afterCommit(context)
+  return result
 }
 
 /** Free and taken slots for a facility on a day. */
@@ -267,10 +283,14 @@ export async function dockDay(context: Ctx, args: { facilityId: string; date: st
   const facility = await context.prisma.facility.findUnique({ where: { id: args.facilityId } })
   if (!facility) fail('Facility not found.')
   const day = /^\d{4}-\d{2}-\d{2}$/.test(args.date) ? args.date : new Date().toISOString().slice(0, 10)
-  const start = new Date(`${day}T00:00:00Z`)
-  const end = new Date(start.getTime() + 86_400_000)
+  const tz = (await getSettings(context.prisma)).timezone
+  const start = zonedInstant(day, '00:00', tz)
+  const end = new Date(zonedInstant(new Date(Date.parse(`${day}T12:00:00Z`) + 86_400_000).toISOString().slice(0, 10), '00:00', tz))
   const appointments = await context.prisma.dockAppointment.findMany({ where: { facilityId: facility.id, startsAt: { gte: start, lt: end } }, include: { order: { select: { id: true, orderNumber: true, company: { select: { legalName: true } } } }, job: { select: { id: true, jobNumber: true, organization: { select: { name: true } } } } }, orderBy: { startsAt: 'asc' } })
-  return { facility: { id: facility.id, name: facility.name, slotMinutes: facility.dockSlotMinutes, perWindow: facility.dockSlotsPerWindow, hours: facility.hours }, appointments }
+  const settings = await getSettings(context.prisma)
+  const live = appointments.filter((a: any) => ['booked', 'arrived'].includes(a.status))
+  const grid = dockSlots({ date: day, hours: facility.hours, slotMinutes: facility.dockSlotMinutes, perWindow: facility.dockSlotsPerWindow, timeZone: settings.timezone, booked: live })
+  return { date: day, timeZone: settings.timezone, facility: { id: facility.id, name: facility.name, slotMinutes: facility.dockSlotMinutes, perWindow: facility.dockSlotsPerWindow, hours: facility.hours }, open: grid.open, slots: grid.slots, appointments }
 }
 
 // ---------------------------------------------------------------- claims (S19)

@@ -8,6 +8,9 @@ import { requestJob, quoteJob, acceptJobQuote, scheduleJob, startJobRoute, colle
 import { auditAsset, recordSanitization, verifySanitization, setAssetDisposition, issueCertificate } from './process'
 import { createLotFromAssets, publishSaleEvent, placeBid, advanceLotClock, awardLot } from './lots'
 import { recordOfflinePayment } from './money'
+import { rerenderCertificate } from './process'
+import { addBusinessDays } from '../lib/rules/time'
+import { StarterTimeline, applyTimeline, storyClock } from './starterTimeline'
 
 // §4.11 "full" template: working records for a recycler that wants to see every
 // screen with real data on day one. Everything goes through the same domain
@@ -135,6 +138,14 @@ function serialFor(manufacturer: string) {
   return manufacturer === 'Dell' ? body.slice(0, 7) : `${SERIAL_PREFIX[manufacturer] ?? ''}${body.slice(0, 8)}`
 }
 
+
+const BUYER_STORY: Record<string, { apply: [number, number]; review: [number, number] }> = {
+  northgate: { apply: [14, 10], review: [13, 9] },
+  bluewater: { apply: [13, 14], review: [12, 10] },
+  copperline: { apply: [2, 15], review: [2, 16] },
+  atlas: { apply: [6, 11], review: [5, 10] },
+}
+
 // ---------------------------------------------------------------- run
 
 export type StarterResult = {
@@ -144,7 +155,7 @@ export type StarterResult = {
   records: Record<string, unknown>
 }
 
-export async function seedStarterRecords(context: Ctx, options: { password?: string; supportEmail?: string; businessName: string }): Promise<StarterResult> {
+export async function seedStarterRecords(context: Ctx, options: { password?: string; supportEmail?: string; businessName: string; since?: Date }): Promise<StarterResult> {
   const base: any = context
   if (typeof base.withSession !== 'function') fail('Starter records need a signed-in session.')
   const prisma = context.prisma
@@ -166,6 +177,18 @@ export async function seedStarterRecords(context: Ctx, options: { password?: str
     ]
     return { skipped: true, logins, records: { note: 'Starter records already exist. Passwords were shown when they were created; reset them from Team or the sign-in page.' } }
   }
+
+  // The history ends on the last finished business day: day n is n business days back.
+  const tz = settings.timezone || 'UTC'
+  const story = storyClock(tz)
+  // Onboarding's own rows (roles, settings, facility) belong to the first day too.
+  const timeline = new StarterTimeline(options.since ?? new Date(), tz)
+  const phase = async (from: [number, number, number?], to: [number, number, number?]) => {
+    await new Promise((r) => setTimeout(r, 40))
+    timeline.mark(story.at(from[0], from[1], from[2] ?? 0), story.at(to[0], to[1], to[2] ?? 0))
+    await new Promise((r) => setTimeout(r, 40))
+  }
+  await phase([16, 9], [16, 11])
 
   const password = options.password && options.password.length >= 10 ? options.password : `${randomBytes(9).toString('base64url')}-Rc1`
   const logins: Login[] = []
@@ -199,6 +222,8 @@ export async function seedStarterRecords(context: Ctx, options: { password?: str
   const buyerUsers: Record<string, { userId: string; companyId: string }> = {}
   for (const b of BUYERS) {
     const email = emailFor(b.key)
+    const plan = BUYER_STORY[b.key]
+    await phase([plan.apply[0], plan.apply[1]], [plan.apply[0], plan.apply[1] + 1])
     const reg = await registerBuyer(base, { name: b.person, email, password, phone: b.phone, legalName: b.legalName, countryCode: 'US' })
     const asBuyer = await sessionFor(reg.userId)
     await saveBuyerApplication(asBuyer, {
@@ -207,6 +232,7 @@ export async function seedStarterRecords(context: Ctx, options: { password?: str
     })
     await uploadBuyerDocument(asBuyer, { type: 'resale_certificate', file: await resaleCertificatePdf(b.legalName, b.state, b.permit), state: b.state, expiresOn: new Date(Date.now() + 700 * DAY).toISOString().slice(0, 10) })
     await submitBuyerApplication(asBuyer, { acceptTermsVersion: settings.wholesaleTermsVersion })
+    await phase([plan.review[0], plan.review[1]], [plan.review[0], plan.review[1] + 1])
     if (b.outcome === 'approve') {
       await reviewBuyerApplication(owner, { companyId: reg.companyId, action: 'open' })
       const docs = await prisma.buyerDocument.findMany({ where: { companyId: reg.companyId } })
@@ -223,6 +249,7 @@ export async function seedStarterRecords(context: Ctx, options: { password?: str
   records.buyers = BUYERS.map((b) => b.legalName)
 
   // ------------------------------------------------ clients (T1, T2)
+  await phase([15, 13], [15, 16])
   const orgs: Record<string, { id: string; userId: string; siteIds: string[] }> = {}
   for (const c of CLIENTS) {
     const site0 = c.sites[0]
@@ -236,14 +263,13 @@ export async function seedStarterRecords(context: Ctx, options: { password?: str
 
   // ------------------------------------------------ jobs (K1-K7)
   const today = new Date()
-  const dateIn = (days: number) => new Date(today.getTime() + days * DAY).toISOString().slice(0, 10)
   const siteOf = (key: keyof typeof orgs, i = 0) => {
     const s = CLIENTS.find((c) => c.key === key)!.sites[i]
     return { addressLine1: s.addressLine1, city: s.city, region: s.region, postalCode: s.postalCode, countryCode: 'US', hasDock: s.hasDock, needsLiftgate: s.needsLiftgate, accessNotes: s.accessNotes, hours: s.hours }
   }
-  const newJob = async (key: keyof typeof orgs, siteIndex: number, notes: string, estimate: Array<[string, number, string]>) => {
+  const newJob = async (key: keyof typeof orgs, siteIndex: number, notes: string, estimate: Array<[string, number, string]>, requestedDates: string[]) => {
     const c = CLIENTS.find((x) => x.key === key)!
-    const out = await requestJob(owner, { organizationId: orgs[key].id, siteId: orgs[key].siteIds[siteIndex], contactName: c.sites[siteIndex].contactName, contactEmail: emailFor(key), contactPhone: c.sites[siteIndex].contactPhone, site: siteOf(key, siteIndex), requestedDates: [dateIn(3), dateIn(4)], hasDataBearing: true, services: ['pickup', 'data_destruction', 'itad'], estimate: estimate.map(([category, quantity, unit]) => ({ categoryId: cat(category), quantity, unit })), notes })
+    const out = await requestJob(owner, { organizationId: orgs[key].id, siteId: orgs[key].siteIds[siteIndex], contactName: c.sites[siteIndex].contactName, contactEmail: emailFor(key), contactPhone: c.sites[siteIndex].contactPhone, site: siteOf(key, siteIndex), requestedDates, hasDataBearing: true, services: ['pickup', 'data_destruction', 'itad'], estimate: estimate.map(([category, quantity, unit]) => ({ categoryId: cat(category), quantity, unit })), notes })
     return out.jobId as string
   }
   const acceptAs = async (key: keyof typeof orgs, jobId: string) => {
@@ -251,15 +277,20 @@ export async function seedStarterRecords(context: Ctx, options: { password?: str
     const c = CLIENTS.find((x) => x.key === key)!
     await acceptJobQuote(await sessionFor(orgs[key].userId), { jobNumber: job.jobNumber, signatureName: c.person, termsVersion: settings.serviceTermsVersion })
   }
-  const collect = async (jobId: string, key: keyof typeof orgs, containers: Array<{ label: string; type: string; sealNumber: string; itemCountDeclared: number; grossWeight: number }>) => {
-    await scheduleJob(owner, { jobId, date: dateIn(0), windowStart: '08:00', windowEnd: '10:00', driverId: staff.driver.id, vehicle: 'Box truck 2 (26 ft, liftgate)' })
+  /** Schedules on day `scheduledOn` (booked on `bookedOn`), drives, collects and receives that day. */
+  const collect = async (jobId: string, key: keyof typeof orgs, containers: Array<{ label: string; type: string; sealNumber: string; itemCountDeclared: number; grossWeight: number }>, bookedOn: number, scheduledOn: number) => {
+    await phase([bookedOn, 15], [bookedOn, 15, 30])
+    await scheduleJob(owner, { jobId, date: story.day(scheduledOn), windowStart: '08:00', windowEnd: '10:00', driverId: staff.driver.id, vehicle: 'Box truck 2 (26 ft, liftgate)' })
+    await phase([scheduledOn, 8, 5], [scheduledOn, 8, 20])
     await startJobRoute(driver, { jobId })
+    await phase([scheduledOn, 9, 10], [scheduledOn, 9, 50])
     const signer = CLIENTS.find((x) => x.key === key)!.sites[0].contactName
     // Container labels are unique across the facility, so they carry the job number.
     const { jobNumber } = await prisma.job.findUnique({ where: { id: jobId }, select: { jobNumber: true } })
     containers = containers.map((c) => ({ ...c, label: `${jobNumber}-${c.label}` }))
     await collectJob(driver, { jobId, containers, signerName: signer, signature: signaturePng(signer), notes: 'Loaded and shrink-wrapped on site.' })
     const rows = await prisma.container.findMany({ where: { jobId }, orderBy: { label: 'asc' } })
+    await phase([scheduledOn, 13, 15], [scheduledOn, 14, 30])
     for (const r of rows) {
       const plan = containers.find((c) => c.label === r.label)!
       await receiveContainer(owner, { containerId: r.id, receivedSealNumber: plan.sealNumber, grossWeight: plan.grossWeight, tareWeight: plan.type === 'gaylord' ? 48 : 42, locationCode: `IN-${r.label.slice(-2)}` })
@@ -284,13 +315,13 @@ export async function seedStarterRecords(context: Ctx, options: { password?: str
     }
     return created
   }
-  const wipe = async (assets: Array<{ id: string; plan: AssetPlan; index: number }>) => {
+  const wipe = async (assets: Array<{ id: string; plan: AssetPlan; index: number }>, reportDay: string) => {
     const done = (a: { plan: AssetPlan; index: number }) => a.index >= (a.plan.pending ?? 0) + (a.plan.wipe === 'purge' ? a.plan.failed ?? 0 : 0)
     const byWipe = (w: AssetPlan['wipe']) => assets.filter((a) => a.plan.wipe === w)
     const purge = byWipe('purge')
     const passedPurge = purge.filter(done).map((a) => a.id)
     const failedPurge = purge.filter((a) => a.index >= (a.plan.pending ?? 0) && a.index < (a.plan.pending ?? 0) + (a.plan.failed ?? 0)).map((a) => a.id)
-    const reportReference = `BDE-${today.toISOString().slice(0, 10).replace(/-/g, '')}-${randomBytes(2).toString('hex').toUpperCase()}`
+    const reportReference = `BDE-${reportDay.replace(/-/g, '')}-${randomBytes(2).toString('hex').toUpperCase()}`
     if (passedPurge.length) await recordSanitization(technician, { assetIds: passedPurge, method: 'purge', technique: 'crypto_erase', standard: 'NIST SP 800-88 Rev. 1', tool: 'Blancco Drive Eraser', toolVersion: '7.11', reportReference, result: 'passed' })
     if (failedPurge.length) await recordSanitization(technician, { assetIds: failedPurge, method: 'purge', technique: 'crypto_erase', standard: 'NIST SP 800-88 Rev. 1', tool: 'Blancco Drive Eraser', toolVersion: '7.11', reportReference, result: 'failed', failureReason: 'Drive reported a frozen security state; erase did not complete.' })
     const clear = byWipe('clear').map((a) => a.id)
@@ -307,45 +338,67 @@ export async function seedStarterRecords(context: Ctx, options: { password?: str
   }
 
   // Job 1: Meridian, collected, processed, certified and complete.
-  const job1 = await newJob('meridian', 0, 'Annual refresh from the Riverside campus. Two pallets of laptops and desktops, one gaylord of loose drives and phones.', [['Laptops', 30, 'units'], ['Desktops', 12, 'units'], ['Monitors', 10, 'units'], ['Hard drives', 8, 'units'], ['Mobile phones', 10, 'units']])
+  // Requested 15 business days back, collected on day 11, processed over days 10-6, certified and closed on day 5.
+  await phase([15, 9, 10], [15, 9, 25])
+  const job1 = await newJob('meridian', 0, 'Annual refresh from the Riverside campus. Two pallets of laptops and desktops, one gaylord of loose drives and phones.', [['Laptops', 30, 'units'], ['Desktops', 12, 'units'], ['Monitors', 10, 'units'], ['Hard drives', 8, 'units'], ['Mobile phones', 10, 'units']], [story.day(11), story.day(10)])
+  await phase([15, 14], [15, 14, 20])
   await quoteJob(owner, { jobId: job1, pricingModel: 'revenue_share', revenueShareBps: 7000, lines: [{ description: 'Collection, Columbus metro', quantity: 1, unitPriceMinor: 0, kind: 'pickup' }, { description: 'Serial-level audit and grading', quantity: 70, unitPriceMinor: 0, kind: 'audit' }, { description: 'Drive shredding with certificate', quantity: 8, unitPriceMinor: 500, kind: 'shred' }] })
+  await phase([14, 10, 40], [14, 10, 50])
   await acceptAs('meridian', job1)
   const c1 = await collect(job1, 'meridian', [
     { label: 'MHP-P01', type: 'pallet', sealNumber: 'S-448120', itemCountDeclared: 30, grossWeight: 214 },
     { label: 'MHP-P02', type: 'pallet', sealNumber: 'S-448121', itemCountDeclared: 22, grossWeight: 362 },
     { label: 'MHP-G01', type: 'gaylord', sealNumber: 'S-448122', itemCountDeclared: 18, grossWeight: 71 },
-  ])
+  ], 13, 11)
+  await phase([10, 8, 30], [8, 16])
   const assets1 = await auditPlans(job1, c1, JOB_ONE)
-  await wipe(assets1)
+  await phase([8, 9], [7, 15])
+  await wipe(assets1, story.day(8))
+  await phase([6, 10], [6, 11])
   for (const disposition of ['resale', 'recycle'] as const) {
     const ids = assets1.filter((a) => a.plan.disposition === disposition && !(a.plan.grades[a.index % a.plan.grades.length][1] === 'F4' && disposition === 'resale')).map((a) => a.id)
     if (ids.length) await setAssetDisposition(owner, { assetIds: ids, disposition })
   }
+  await phase([5, 14], [5, 14, 30])
   const cert1 = await issueCertificate(owner, { jobId: job1, type: 'data_destruction' })
   const cert2 = await issueCertificate(owner, { jobId: job1, type: 'recycling' })
+  await phase([5, 15], [5, 15, 10])
   await completeJob(owner, { jobId: job1 })
 
   // Job 2: Larkspur, received and in processing, some drives still to wipe.
-  const job2 = await newJob('larkspur', 0, 'Branch desktop refresh and the old server rack from the operations centre.', [['Desktops', 20, 'units'], ['Servers', 6, 'units'], ['Networking', 8, 'units'], ['Laptops', 16, 'units']])
+  // Requested on day 9, collected on day 6, audited days 5-3, wiping since day 2.
+  await phase([9, 11], [9, 11, 15])
+  const job2 = await newJob('larkspur', 0, 'Branch desktop refresh and the old server rack from the operations centre.', [['Desktops', 20, 'units'], ['Servers', 6, 'units'], ['Networking', 8, 'units'], ['Laptops', 16, 'units']], [story.day(6), story.day(5)])
+  await phase([9, 15], [9, 15, 20])
   await quoteJob(owner, { jobId: job2, pricingModel: 'fee_for_service', lines: [{ description: 'Collection, Dayton', quantity: 1, unitPriceMinor: 17_500, kind: 'pickup' }, { description: 'Serial-level audit', quantity: 50, unitPriceMinor: 400, kind: 'audit' }, { description: 'On-site witnessed wipe, per drive', quantity: 50, unitPriceMinor: 800, kind: 'wipe' }] })
+  await phase([8, 9, 30], [8, 9, 40])
   await acceptAs('larkspur', job2)
   const c2 = await collect(job2, 'larkspur', [
     { label: 'LCU-G01', type: 'gaylord', sealNumber: 'S-448210', itemCountDeclared: 28, grossWeight: 186 },
     { label: 'LCU-P01', type: 'pallet', sealNumber: 'S-448211', itemCountDeclared: 22, grossWeight: 412 },
-  ])
+  ], 8, 6)
+  await phase([5, 8, 30], [3, 16])
   const assets2 = await auditPlans(job2, c2, JOB_TWO)
-  await wipe(assets2)
+  await phase([2, 9], [1, 15])
+  await wipe(assets2, story.day(2))
+  await phase([1, 15, 30], [1, 15, 45])
   const readyOptiplex = assets2.filter((a) => a.plan.model.startsWith('OptiPlex') && a.index >= (a.plan.pending ?? 0)).map((a) => a.id)
   if (readyOptiplex.length) await setAssetDisposition(owner, { assetIds: readyOptiplex, disposition: 'resale' })
 
   // Job 3: Halvorsen, accepted and scheduled for a driver.
-  const job3 = await newJob('halvorsen', 0, 'Office move: workstations and monitors from floor 12.', [['Desktops', 25, 'units'], ['Monitors', 30, 'units']])
+  await phase([4, 10], [4, 10, 10])
+  const job3 = await newJob('halvorsen', 0, 'Office move: workstations and monitors from floor 12.', [['Desktops', 25, 'units'], ['Monitors', 30, 'units']], [story.day(-2), story.day(-3)])
+  await phase([4, 16], [4, 16, 15])
   await quoteJob(owner, { jobId: job3, pricingModel: 'fee_for_service', lines: [{ description: 'Collection, Cincinnati CBD (freight elevator)', quantity: 1, unitPriceMinor: 22_500, kind: 'pickup' }, { description: 'Hard drive shredding', quantity: 25, unitPriceMinor: 500, kind: 'shred' }, { description: 'Monitor recycling fee', quantity: 30, unitPriceMinor: 500, kind: 'recycling_fee' }] })
+  await phase([3, 11], [3, 11, 10])
   await acceptAs('halvorsen', job3)
-  await scheduleJob(owner, { jobId: job3, date: dateIn(2), windowStart: '09:00', windowEnd: '11:00', driverId: staff.driver.id, vehicle: 'Box truck 1 (20 ft, liftgate)' })
+  await phase([2, 10], [2, 10, 10])
+  await scheduleJob(owner, { jobId: job3, date: story.day(-2), windowStart: '09:00', windowEnd: '11:00', driverId: staff.driver.id, vehicle: 'Box truck 1 (20 ft, liftgate)' })
 
   // Job 4: Meridian Westside clinic, quoted and waiting for the client.
-  const job4 = await newJob('meridian', 1, 'Clinic workstation swap. Client wants a quote before the budget meeting.', [['Laptops', 14, 'units'], ['Printers', 3, 'units']])
+  await phase([1, 9, 30], [1, 9, 40])
+  const job4 = await newJob('meridian', 1, 'Clinic workstation swap. Client wants a quote before the budget meeting.', [['Laptops', 14, 'units'], ['Printers', 3, 'units']], [story.day(-5), story.day(-6)])
+  await phase([0, 11], [0, 11, 20])
   await quoteJob(owner, { jobId: job4, pricingModel: 'revenue_share', revenueShareBps: 7000, lines: [{ description: 'Collection, liftgate required', quantity: 1, unitPriceMinor: 9_500, kind: 'pickup' }, { description: 'Printer recycling fee', quantity: 3, unitPriceMinor: 1_500, kind: 'recycling_fee' }] })
 
   const jobNumbers = await prisma.job.findMany({ where: { id: { in: [job1, job2, job3, job4] } }, select: { id: true, jobNumber: true, status: true } })
@@ -358,6 +411,7 @@ export async function seedStarterRecords(context: Ctx, options: { password?: str
     { name: 'Great Lakes Metals Recovery', addressLine1: '3100 Ship Canal Rd', city: 'Toledo', region: 'OH', postalCode: '43611', contactName: 'Jim Kowalczyk', contactEmail: 'compliance@greatlakesmetals.com', certifications: [{ name: 'R2v3', number: 'R2-24-11873', expiresOn: '2027-09-30' }, { name: 'ISO 14001', number: 'EMS-558120', expiresOn: '2027-03-31' }], categories: ['Circuit boards', 'Cables and wire', 'Mixed e-scrap', 'Hard drives'], notes: 'Shredded drive fragments and boards. Smelter downstream: Aurubis Hamburg.' },
     { name: 'Ridgeway Battery Solutions', addressLine1: '88 Furnace Run', city: 'Ellwood City', region: 'PA', postalCode: '16117', contactName: 'Sandra Pike', contactEmail: 'receiving@ridgewaybattery.com', certifications: [{ name: 'R2v3', number: 'R2-23-10442', expiresOn: '2026-12-31' }, { name: 'e-Stewards', number: 'ES-1187', expiresOn: '2027-05-31' }], categories: ['Batteries', 'CRT'], notes: 'Lithium-ion and lead-acid. Ship in UN-rated drums only.' },
   ]
+  await phase([16, 14], [16, 15])
   for (const v of vendors) {
     const { categories: names, ...data } = v
     await sudo.db.DownstreamVendor.createOne({ data: { ...data, countryCode: 'US', status: 'approved', approvedOn: new Date(today.getTime() - 120 * DAY).toISOString().slice(0, 10), reviewDueOn: new Date(today.getTime() + 245 * DAY).toISOString().slice(0, 10), approvedCategories: { connect: names.map(cat).filter(Boolean).map((id) => ({ id })) } } })
@@ -365,10 +419,11 @@ export async function seedStarterRecords(context: Ctx, options: { password?: str
   records.downstreamVendors = vendors.map((v) => v.name)
 
   // ------------------------------------------------ sale event and lots (S8-S14)
+  await phase([5, 15, 30], [5, 17])
   const facility = await prisma.facility.findFirst({ orderBy: { createdAt: 'asc' } })
   const eventCloses = new Date(today.getTime() + 5 * DAY)
   eventCloses.setUTCHours(19, 0, 0, 0)
-  const event = await prisma.saleEvent.create({ data: { title: `${today.toLocaleString('en-US', { month: 'long', timeZone: 'UTC' })} enterprise IT sale`, slug: `enterprise-it-sale-${today.toISOString().slice(0, 10)}-${randomBytes(2).toString('hex')}`, description: 'Off-lease laptops, desktops and data-centre equipment from healthcare and finance clients. Every data-bearing device is wiped to NIST 800-88 or destroyed, with serial-level manifests.', opensAt: today, closesAt: eventCloses, status: 'draft' } })
+  const event = await prisma.saleEvent.create({ data: { title: `${today.toLocaleString('en-US', { month: 'long', timeZone: 'UTC' })} enterprise IT sale`, slug: `enterprise-it-sale-${today.toISOString().slice(0, 10)}-${randomBytes(2).toString('hex')}`, description: 'Off-lease laptops, desktops and data-centre equipment from healthcare and finance clients. Every data-bearing device is wiped to NIST 800-88 or destroyed, with serial-level manifests.', opensAt: story.at(4, 9), closesAt: eventCloses, status: 'draft' } })
   const closeAt = (days: number, hour = 19) => { const d = new Date(today.getTime() + days * DAY); d.setUTCHours(hour, 0, 0, 0); return d }
 
   const lotData = (title: string, fields: Record<string, any>) => ({ title, slug: slugify(title), saleEventId: event.id, facilityId: facility?.id ?? null, status: 'draft', awardMode: 'manual', shippingTerms: 'buyer_arranged', exportAllowed: true, ...fields })
@@ -411,6 +466,7 @@ export async function seedStarterRecords(context: Ctx, options: { password?: str
     { category: 'Solid state drives', manufacturer: 'Intel', model: 'D3-S4510 960GB', description: 'Intel D3-S4510 960 GB SATA SSD, health 90%+', quantity: 180, cosmeticGrade: 'Grade A', functionalGrade: 'Fully working' },
   ])
 
+  await phase([4, 9], [4, 9, 5])
   const published = await publishSaleEvent(owner, { saleEventId: event.id, announce: true })
   if (published.problems?.length) fail(`Some starter lots could not be published: ${published.problems.join('; ')}`)
 
@@ -421,6 +477,12 @@ export async function seedStarterRecords(context: Ctx, options: { password?: str
   const bid = (who: Ctx, lot: string, args: Record<string, any>) => placeBid(who, { lotNumber: lot, idempotencyKey: key(), ...args } as any)
 
   const [n1, n2, n3, n5, n6] = await Promise.all([lot1Draft.id, lot2.id, lot3.id, lot5.id, lot6.id].map(lotNumber))
+  await phase([4, 13], [3, 16])
+  const win6 = await bid(asBluewater, n6, { amountMinor: 1_480_000 })
+  await bid(asNorthgate, n6, { amountMinor: 1_390_000 })
+  await bid(asNorthgate, n5, { amountMinor: 960_000 })
+  await phase([2, 9], [1, 16])
+  await bid(asBluewater, n5, { amountMinor: 1_020_000 })
   await bid(asNorthgate, n1, { amountMinor: 1_104_000 })
   await bid(asBluewater, n1, { amountMinor: 1_065_000 })
   const [r740, c9300, dl360] = lot2.lines
@@ -429,20 +491,38 @@ export async function seedStarterRecords(context: Ctx, options: { password?: str
   await bid(asNorthgate, n3, { amountMinor: 1_500_000 })
   await bid(asBluewater, n3, { amountMinor: 1_550_000 })
   await bid(asNorthgate, n3, { amountMinor: 1_625_000 })
-  await bid(asNorthgate, n5, { amountMinor: 960_000 })
-  await bid(asBluewater, n5, { amountMinor: 1_020_000 })
-  const win6 = await bid(asBluewater, n6, { amountMinor: 1_480_000 })
-  await bid(asNorthgate, n6, { amountMinor: 1_390_000 })
 
-  // Close lots 5 and 6 as the clock would at their close time.
-  const past = new Date(Date.now() - 60_000)
-  for (const id of [lot5.id, lot6.id]) {
-    await prisma.lot.update({ where: { id }, data: { closesAt: past } })
+  // Lot 6 closed on day 2 and was awarded that afternoon; lot 5 closed on day 0 and waits for an award.
+  for (const [id, day] of [[lot6.id, 2], [lot5.id, 0]] as const) {
+    const closedOn = story.at(day, 13)
+    await prisma.lot.update({ where: { id }, data: { closesAt: closedOn, originalClosesAt: closedOn } })
+    await phase([day, 13], [day, 13, 1])
     await advanceLotClock({ prisma }, id)
   }
+  await phase([2, 15], [2, 15, 5])
   const [award6] = await awardLot(owner, { lotId: lot6.id, bidId: (win6 as any).bidId })
   const invoice6 = await prisma.invoice.findUnique({ where: { invoiceNumber: award6.invoiceNumber } })
-  await recordOfflinePayment(owner, { invoiceId: invoice6.id, method: 'wire', amountMinor: invoice6.totalMinor, reference: `FW ${randomBytes(4).toString('hex').toUpperCase()} BLUEWATER IT ASSET`, paidOn: new Date().toISOString().slice(0, 10) })
+  await phase([1, 11], [1, 11, 5])
+  await recordOfflinePayment(owner, { invoiceId: invoice6.id, method: 'wire', amountMinor: invoice6.totalMinor, reference: `FW ${randomBytes(4).toString('hex').toUpperCase()} BLUEWATER IT ASSET`, paidOn: story.day(1) })
+  await phase([1, 11, 5], [1, 11, 10])
+
+  // Give every row its place in the history, then the dates that were worked out from "now".
+  await applyTimeline(prisma, timeline)
+  const order6 = await prisma.order.findUnique({ where: { orderNumber: award6.orderNumber } })
+  const awarded = await prisma.award.findUnique({ where: { id: award6.awardId } })
+  const inv6 = await prisma.invoice.findUnique({ where: { id: invoice6.id } })
+  const dueAt = addBusinessDays(new Date(awarded.awardedAt), settings.paymentDueBusinessDays, tz)
+  await prisma.invoice.update({ where: { id: inv6.id }, data: { dueAt, updatedAt: inv6.updatedAt } })
+  await prisma.order.update({ where: { id: order6.id }, data: { updatedAt: order6.updatedAt, paymentDueAt: dueAt, ...(order6.readyAt ? { removalDueAt: addBusinessDays(new Date(order6.readyAt), settings.removalBusinessDays, tz) } : {}) } })
+  for (const n of await prisma.notification.findMany({ where: { type: 'lot_won', link: { endsWith: award6.invoiceNumber } } })) {
+    await prisma.notification.update({ where: { id: n.id }, data: { body: n.body.replace(/is due .*\.$/, `is due ${dueAt.toDateString()}.`) } })
+  }
+  for (const c of [cert1, cert2]) {
+    const before = await prisma.certificate.findUnique({ where: { id: c.id }, select: { issuedAt: true, updatedAt: true } })
+    await prisma.$transaction((tx: any) => rerenderCertificate(tx, c.id), { timeout: 120_000 })
+    const after = await prisma.certificate.update({ where: { id: c.id }, data: { updatedAt: before.updatedAt } })
+    await prisma.storedFile.update({ where: { id: after.pdfId }, data: { createdAt: before.issuedAt, updatedAt: before.issuedAt } })
+  }
 
   const lotRows = await prisma.lot.findMany({ where: { saleEventId: event.id }, select: { lotNumber: true, title: true, status: true, format: true, bidBasis: true, bidCount: true }, orderBy: { lotNumber: 'asc' } })
   records.saleEvent = { title: event.title, lots: lotRows }

@@ -1,5 +1,6 @@
+import { GraphQLError } from 'graphql'
 import type { RolePermission } from '../access'
-import { command, requireStaff, toJson, type Ctx } from '../lib/core'
+import { DomainError, command, requireStaff, toJson, type Ctx } from '../lib/core'
 import * as buyers from '../domain/buyers'
 import * as documents from '../domain/documents'
 import * as files from '../domain/files'
@@ -63,7 +64,9 @@ export const OPERATIONS: Record<string, Op> = {
   acceptWholesaleTerms: m('account', (c, i) => buyers.acceptWholesaleTerms(c, i)),
   downloadLotManifest: m('account', (c, i) => sheets.downloadLotManifest(c, i)),
   downloadBidSheet: m('account', (c, i) => sheets.downloadBidSheet(c, i)),
-  previewBidSheet: m('account', (c, i) => sheets.previewBidSheet(c, i)),
+  checkBidSheet: m('account', (c, i) => sheets.checkBidSheet(c, i)),
+  // Old name, kept until the storefront calls checkBidSheet.
+  previewBidSheet: m('account', (c, i) => sheets.checkBidSheet(c, i)),
   placeBid: m('account', (c, i) => lots.placeBid(c, i)),
   placeBidFromSheet: m('account', (c, i) => sheets.placeBidFromSheet(c, i)),
   withdrawBid: m('account', (c, i) => lots.withdrawBid(c, i)),
@@ -187,6 +190,18 @@ export const OPERATIONS: Record<string, Op> = {
   runElectronicsRecyclingOnboarding: m(['canManageOnboarding'], (c, i) => runElectronicsRecyclingOnboarding(c, i ?? {})),
 }
 
+/**
+ * A refusal ("This page is for buyer accounts.", "Order not found.") reaches the
+ * caller as its own message with code REFUSED; GraphQL Yoga would otherwise mask
+ * a plain Error as "Unexpected error.". Anything else is logged and reported plainly.
+ */
+export function queryError(name: string, error: unknown) {
+  if (error instanceof GraphQLError) return error
+  if (error instanceof DomainError || (error as Error)?.name === 'RuleError') return new GraphQLError((error as Error).message, { extensions: { code: 'REFUSED' } })
+  console.error(`[query ${name}]`, error)
+  return new GraphQLError('Something went wrong loading this. Try again.', { extensions: { code: 'INTERNAL' } })
+}
+
 function guard(op: Op, context: Ctx) {
   if (Array.isArray(op.access)) requireStaff(context, ...op.access)
 }
@@ -198,8 +213,12 @@ export function buildResolvers() {
     if (op.kind === 'query') {
       // Queries throw a GraphQL error on refusal (no partial data to show).
       Query[name] = async (_root: unknown, args: { input?: unknown }, context: Ctx) => {
-        guard(op, context)
-        return toJson(await op.run(context, args.input ?? {}))
+        try {
+          guard(op, context)
+          return toJson(await op.run(context, args.input ?? {}))
+        } catch (error) {
+          throw queryError(name, error)
+        }
       }
     } else {
       Mutation[name] = async (_root: unknown, args: { input?: unknown }, context: Ctx) => {
