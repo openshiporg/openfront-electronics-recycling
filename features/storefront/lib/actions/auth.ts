@@ -89,3 +89,12 @@ export async function redeemResetAction(_prev: FormState, form: FormData): Promi
   revalidatePath('/', 'layout')
   redirect(viewer ? homeFor(viewer) : '/signin')
 }
+
+/** P3: a public pickup request creates the organisation, a client login and the job; then the visitor is signed in. */
+export async function submitPickupAction(input: Record<string, any>): Promise<{ ok: false; error: string } | { ok: true; jobNumber: string }> {
+  const r = await cmd<{ jobNumber: string }>('submitPickupRequest', input)
+  if (!r.success || !r.data) return { ok: false, error: r.error || 'We could not send the request.' }
+  await startSession(String(input.contactEmail || '').trim().toLowerCase(), String(input.password || ''))
+  revalidatePath('/', 'layout')
+  return { ok: true, jobNumber: r.data.jobNumber }
+}

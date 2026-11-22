@@ -432,3 +432,21 @@ button.ar-textlink { background: none; border: 0; padding: 0; font: inherit; cur
 .ar-list li > a { flex: 1 1 220px; }
 .ar-list li > .ar-num { margin-left: auto; font-weight: 700; }
 .ar-grid-2 > .ar-panel, .ar-grid-3 > .ar-panel { margin: 0; }
+fieldset.ar-panel { margin: 0; min-width: 0; }
+.ar-legend { float: left; width: 100%; padding: 0; margin-bottom: 14px; font-family: var(--ar-head); font-weight: 800; font-size: 18px; color: var(--ar-ink); }
+.ar-legend + * { clear: both; }
+.ar-row-end { align-items: end; }
+.ar-checks { display: grid; gap: 10px; margin-top: 6px; }
+.ar-btn-icon { width: 44px; padding: 0; justify-content: center; flex: 0 0 44px; }
+.ar-line-row { display: grid; grid-template-columns: 1.3fr 110px 120px 1.6fr auto; gap: 12px; align-items: end; }
+@media (max-width: 760px) {
+  .ar-line-row { grid-template-columns: 1fr 1fr; padding-bottom: 12px; border-bottom: 1px solid var(--ar-rule); }
+  .ar-line-row > .ar-field { max-width: none !important; }
+  .ar-row-3 { grid-template-columns: 1fr 1fr; }
+  .ar-row-3 > :first-child { grid-column: 1 / -1; }
+}
+.ar-custody { list-style: none; margin: 0; padding: 0 0 0 18px; border-left: 2px solid var(--ar-rule); display: grid; gap: 14px; }
+.ar-custody li { position: relative; display: grid; gap: 2px; font-size: 14px; }
+.ar-custody li::before { content: ''; position: absolute; left: -24px; top: 6px; width: 10px; height: 10px; background: var(--ar-yellow); }
+.ar-custody strong { font-weight: 700; }
+.ar-terms summary { cursor: pointer; color: var(--ar-yellow); font-size: 14px; min-height: 24px; }

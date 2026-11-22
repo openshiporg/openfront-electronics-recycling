@@ -61,3 +61,38 @@ export async function completePaymentAction(invoiceNumber: string, paymentSessio
 export async function reportTransferAction(input: { invoiceNumber: string; reference: string; date: string; amountMinor: number }, base: '/buyer' | '/client') {
   return run('reportBankTransfer', input, [`${base}/invoices/${input.invoiceNumber}`, `${base}/invoices`])
 }
+
+// ---------------- client account (§5.3) and P3
+
+export type PickupInput = {
+  type: 'pickup' | 'drop_off'
+  contactName: string; contactEmail: string; contactPhone?: string; organizationName?: string; password?: string
+  site?: { addressLine1: string; addressLine2?: string; city: string; region?: string; postalCode: string; countryCode?: string; hasDock?: boolean; needsLiftgate?: boolean; accessNotes?: string; hours?: string }
+  siteId?: string | null
+  requestedDates?: string[]; hasDataBearing?: boolean; services?: string[]
+  estimate?: Array<{ categoryId?: string | null; quantity: number; unit?: string; notes?: string }>
+  notes?: string; photos?: FileInput[]; facilityId?: string | null
+}
+
+/** C1: a signed-in client asks for another collection. */
+export async function requestJobAction(input: PickupInput) {
+  return run<{ jobNumber: string }>('requestJob', input, ['/client'])
+}
+
+/** C3 */
+export async function acceptQuoteAction(jobNumber: string, signatureName: string, termsVersion: string) {
+  return run('acceptJobQuote', { jobNumber, signatureName, termsVersion }, ['/client', `/client/jobs/${jobNumber}`])
+}
+
+export async function declineQuoteAction(jobNumber: string, reason: string) {
+  return run('declineJobQuote', { jobNumber, reason }, ['/client', `/client/jobs/${jobNumber}`])
+}
+
+/** C4 */
+export async function certificatePdfAction(certificateNumber: string) {
+  return run<FileInput>('downloadCertificate', { certificateNumber }, [])
+}
+
+export async function settlementPdfAction(settlementNumber: string) {
+  return run<FileInput>('downloadSettlement', { settlementNumber }, [])
+}
