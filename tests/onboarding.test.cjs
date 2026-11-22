@@ -2,7 +2,8 @@
 // twice, and the full template (§4.11) builds working starter records through the
 // domain functions: clients with sites, jobs at four stages, ~120 audited assets with
 // sanitisation records, two certificates, two downstream vendors, four buyers in
-// different review states and a published sale event with six lots in every format.
+// different review states and a published sale event with seven lots in every format, and a published settlement
+// for the finished job built from what its assets sold for.
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const path = require('node:path')
@@ -84,7 +85,7 @@ test('full template: starter records through the domain functions', { skip, time
   assert.equal(orgs.length, 3)
   assert.ok(orgs.every((o) => o.sites.length >= 1))
   const jobs = orgs.flatMap((o) => o.jobs)
-  assert.deepEqual(jobs.map((j) => j.status).sort(), ['completed', 'processing', 'quoted', 'scheduled'])
+  assert.deepEqual(jobs.map((j) => j.status).sort(), ['processing', 'quoted', 'scheduled', 'settled'])
   const jobIds = jobs.map((j) => j.id)
   assert.ok((await p.container.count({ where: { jobId: { in: jobIds } } })) >= 5)
   const assets = await p.asset.findMany({ where: { jobId: { in: jobIds } }, select: { sanitizationStatus: true, isDataBearing: true, status: true } })
@@ -96,7 +97,7 @@ test('full template: starter records through the domain functions', { skip, time
 
   const event = await p.saleEvent.findFirst({ where: { lots: { some: { lotNumber: starter.records.saleEvent.lots[0].lotNumber } } }, include: { lots: true } })
   assert.equal(event.status, 'published')
-  assert.equal(event.lots.length, 6)
+  assert.equal(event.lots.length, 7)
   const kinds = event.lots.map((l) => `${l.format}/${l.bidBasis}/${l.status}`).sort()
   assert.ok(kinds.includes('fixed_price/lot_total/open'))
   assert.ok(kinds.includes('open_auction/lot_total/open'))
@@ -110,7 +111,7 @@ test('full template: starter records through the domain functions', { skip, time
 
   // A believable history: nothing in the future, each step after the one before.
   const now = Date.now()
-  const job1 = jobs.find((j) => j.status === 'completed')
+  const job1 = jobs.find((j) => j.status === 'settled')
   const t = (d) => new Date(d).getTime()
   assert.ok(t(job1.createdAt) < t(job1.quoteSentAt) && t(job1.quoteSentAt) < t(job1.quoteAcceptedAt) && t(job1.quoteAcceptedAt) < t(job1.collectedAt) && t(job1.collectedAt) < t(job1.receivedAt) && t(job1.receivedAt) < t(job1.completedAt), 'job 1 steps in order')
   assert.ok(t(job1.completedAt) < now - 2 * 86_400_000, 'job 1 completed days ago')
@@ -131,6 +132,33 @@ test('full template: starter records through the domain functions', { skip, time
   assert.ok(t(lot6.closedAt) <= t(award.awardedAt) && t(award.awardedAt) <= t(invoice.issuedAt) + 1000 && t(invoice.issuedAt) < t(invoice.paidAt), 'closed, awarded, invoiced, paid')
   assert.ok(t(invoice.dueAt) > t(invoice.issuedAt) && t(invoice.paidAt) < now, 'due after issue; paid in the past')
   assert.ok(Math.abs(t(`${payment.paidOn}T12:00:00Z`) - t(invoice.paidAt)) < 36 * 3_600_000, 'paid on the day the money was recorded')
+
+  // Job 1 settled through the real operations: its resale stock sold on a lot, 70% to the client, less the drive shredding.
+  const st = await p.settlement.findUnique({ where: { settlementNumber: starter.records.settlement.settlementNumber }, include: { lines: true } })
+  assert.equal(st.status, 'published')
+  assert.equal(st.organizationId, job1.organizationId)
+  const sold = await p.asset.findMany({ where: { jobId: job1.id, soldPriceMinor: { gt: 0 } } })
+  const assetLines = st.lines.filter((l) => l.kind === 'asset_value')
+  assert.equal(assetLines.length, sold.length)
+  assert.equal(assetLines.reduce((n, l) => n + l.grossMinor, 0), sold.reduce((n, a) => n + a.soldPriceMinor, 0), 'gross is what the assets sold for')
+  assert.ok(assetLines.every((l) => l.clientShareBps === 7000))
+  assert.equal(st.feesTotalMinor, 4000, 'drive shredding, 8 x $5.00')
+  assert.equal(st.netMinor, st.clientShareTotalMinor - st.feesTotalMinor)
+  assert.ok(st.netMinor > 0)
+  const soldLot = await p.lot.findUnique({ where: { lotNumber: starter.records.settlement.soldOn.lotNumber } })
+  assert.equal(soldLot.saleEventId, event.id)
+  const soldInvoice = await p.invoice.findUnique({ where: { invoiceNumber: starter.records.settlement.soldOn.invoiceNumber } })
+  assert.equal(soldInvoice.status, 'paid')
+  assert.ok(t(soldInvoice.paidAt) <= t(st.publishedAt) && t(st.publishedAt) < now, 'published after the buyer paid, in the past')
+  const meridian = byPortal('client').find((c) => /Meridian/.test(c.organisation))
+  const clientUser = await p.user.findUnique({ where: { email: meridian.email } })
+  const docs = require(path.join(root, 'features/keystone/domain/documents.ts'))
+  const pdf = await docs.downloadSettlement(await ctx.as(clientUser.id), { settlementNumber: st.settlementNumber })
+  assert.equal(Buffer.from(pdf.base64, 'base64').subarray(0, 5).toString(), '%PDF-', 'C4: the client downloads the statement')
+  const pdfRow = await p.storedFile.findUnique({ where: { id: st.pdfId } })
+  assert.ok(Math.abs(t(pdfRow.createdAt) - t(st.publishedAt)) < 1000, 'the statement file is dated when it was published')
+  assert.equal(await p.storedFile.count({ where: { purpose: 'settlement', ownerClientOrganizationId: st.organizationId } }), 1, 'the redrawn statement replaced the first')
+
   const future = await p.auditEvent.count({ where: { occurredAt: { gt: new Date(now) } } })
   assert.equal(future, 0, 'no audit event in the future')
   assert.equal(await p.certification.count({ where: { facility: { code: 'CMH' }, certificateNumber: '' } }), 0, 'no certification without a number')

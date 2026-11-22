@@ -8,6 +8,7 @@ import { requestJob, quoteJob, acceptJobQuote, scheduleJob, startJobRoute, colle
 import { auditAsset, recordSanitization, verifySanitization, setAssetDisposition, issueCertificate } from './process'
 import { createLotFromAssets, publishSaleEvent, placeBid, advanceLotClock, awardLot } from './lots'
 import { recordOfflinePayment } from './money'
+import { buildSettlement, submitSettlementForReview, publishSettlement, rerenderSettlement } from './settlements'
 import { rerenderCertificate } from './process'
 import { addBusinessDays } from '../lib/rules/time'
 import { StarterTimeline, applyTimeline, storyClock } from './starterTimeline'
@@ -466,6 +467,11 @@ export async function seedStarterRecords(context: Ctx, options: { password?: str
     { category: 'Solid state drives', manufacturer: 'Intel', model: 'D3-S4510 960GB', description: 'Intel D3-S4510 960 GB SATA SSD, health 90%+', quantity: 180, cosmeticGrade: 'Grade A', functionalGrade: 'Fully working' },
   ])
 
+  // Lot 7: the rest of the Meridian job's resale stock, sold so the job can be settled (M5, C4).
+  const forLot7 = await prisma.asset.findMany({ where: { jobId: job1, status: 'ready_for_sale', lotLineId: null }, select: { id: true }, orderBy: { assetNumber: 'asc' } })
+  const lot7Draft = await createLotFromAssets(owner, { assetIds: forLot7.map((a: any) => a.id), title: `Dell P2419H 24" monitors and Apple iPhone 11 phones, ${forLot7.length} units, wiped`, saleEventId: event.id, facilityId: facility?.id ?? null, format: 'sealed_bid', bidBasis: 'lot_total' })
+  await prisma.lot.update({ where: { id: lot7Draft.id }, data: { slug: slugify(lot7Draft.title), awardMode: 'manual', closesAt: closeAt(2, 18), palletCount: 1, conditionSummary: 'Monitors tested at 1080p, stands included. Phones unlocked, crypto-erased, iCloud removed; batteries 80%+.', description: doc('Small mixed lot from a healthcare refresh, audited serial by serial.') } })
+
   await phase([4, 9], [4, 9, 5])
   const published = await publishSaleEvent(owner, { saleEventId: event.id, announce: true })
   if (published.problems?.length) fail(`Some starter lots could not be published: ${published.problems.join('; ')}`)
@@ -476,10 +482,12 @@ export async function seedStarterRecords(context: Ctx, options: { password?: str
   const key = () => `starter-${randomBytes(8).toString('hex')}`
   const bid = (who: Ctx, lot: string, args: Record<string, any>) => placeBid(who, { lotNumber: lot, idempotencyKey: key(), ...args } as any)
 
-  const [n1, n2, n3, n5, n6] = await Promise.all([lot1Draft.id, lot2.id, lot3.id, lot5.id, lot6.id].map(lotNumber))
+  const [n1, n2, n3, n5, n6, n7] = await Promise.all([lot1Draft.id, lot2.id, lot3.id, lot5.id, lot6.id, lot7Draft.id].map(lotNumber))
   await phase([4, 13], [3, 16])
   const win6 = await bid(asBluewater, n6, { amountMinor: 1_480_000 })
   await bid(asNorthgate, n6, { amountMinor: 1_390_000 })
+  const win7 = await bid(asNorthgate, n7, { amountMinor: 185_000 })
+  await bid(asBluewater, n7, { amountMinor: 172_500 })
   await bid(asNorthgate, n5, { amountMinor: 960_000 })
   await phase([2, 9], [1, 16])
   await bid(asBluewater, n5, { amountMinor: 1_020_000 })
@@ -492,8 +500,8 @@ export async function seedStarterRecords(context: Ctx, options: { password?: str
   await bid(asBluewater, n3, { amountMinor: 1_550_000 })
   await bid(asNorthgate, n3, { amountMinor: 1_625_000 })
 
-  // Lot 6 closed on day 2 and was awarded that afternoon; lot 5 closed on day 0 and waits for an award.
-  for (const [id, day] of [[lot6.id, 2], [lot5.id, 0]] as const) {
+  // Lots 6 and 7 closed on day 2 and were awarded that afternoon; lot 5 closed on day 0 and waits for an award.
+  for (const [id, day] of [[lot6.id, 2], [lot7Draft.id, 2], [lot5.id, 0]] as const) {
     const closedOn = story.at(day, 13)
     await prisma.lot.update({ where: { id }, data: { closesAt: closedOn, originalClosesAt: closedOn } })
     await phase([day, 13], [day, 13, 1])
@@ -502,21 +510,36 @@ export async function seedStarterRecords(context: Ctx, options: { password?: str
   await phase([2, 15], [2, 15, 5])
   const [award6] = await awardLot(owner, { lotId: lot6.id, bidId: (win6 as any).bidId })
   const invoice6 = await prisma.invoice.findUnique({ where: { invoiceNumber: award6.invoiceNumber } })
+  const [award7] = await awardLot(owner, { lotId: lot7Draft.id, bidId: (win7 as any).bidId })
+  const invoice7 = await prisma.invoice.findUnique({ where: { invoiceNumber: award7.invoiceNumber } })
   await phase([1, 11], [1, 11, 5])
   await recordOfflinePayment(owner, { invoiceId: invoice6.id, method: 'wire', amountMinor: invoice6.totalMinor, reference: `FW ${randomBytes(4).toString('hex').toUpperCase()} BLUEWATER IT ASSET`, paidOn: story.day(1) })
   await phase([1, 11, 5], [1, 11, 10])
+  await recordOfflinePayment(owner, { invoiceId: invoice7.id, method: 'ach', amountMinor: invoice7.totalMinor, reference: `ACH ${randomBytes(3).toString('hex').toUpperCase()} NORTHGATE REFURB`, paidOn: story.day(1) })
+
+  // Job 1 settled: 70% of what its assets sold for, less the drive shredding (M5); the client downloads it (C4).
+  await phase([1, 14], [1, 14, 30])
+  const settlement1 = await buildSettlement(owner, { jobId: job1 })
+  await submitSettlementForReview(owner, { settlementId: settlement1.id })
+  await phase([1, 15, 30], [1, 15, 35])
+  const published1 = await publishSettlement(owner, { settlementId: settlement1.id })
+  await phase([1, 15, 35], [1, 15, 40])
 
   // Give every row its place in the history, then the dates that were worked out from "now".
   await applyTimeline(prisma, timeline)
-  const order6 = await prisma.order.findUnique({ where: { orderNumber: award6.orderNumber } })
-  const awarded = await prisma.award.findUnique({ where: { id: award6.awardId } })
-  const inv6 = await prisma.invoice.findUnique({ where: { id: invoice6.id } })
-  const dueAt = addBusinessDays(new Date(awarded.awardedAt), settings.paymentDueBusinessDays, tz)
-  await prisma.invoice.update({ where: { id: inv6.id }, data: { dueAt, updatedAt: inv6.updatedAt } })
-  await prisma.order.update({ where: { id: order6.id }, data: { updatedAt: order6.updatedAt, paymentDueAt: dueAt, ...(order6.readyAt ? { removalDueAt: addBusinessDays(new Date(order6.readyAt), settings.removalBusinessDays, tz) } : {}) } })
-  for (const n of await prisma.notification.findMany({ where: { type: 'lot_won', link: { endsWith: award6.invoiceNumber } } })) {
-    await prisma.notification.update({ where: { id: n.id }, data: { body: n.body.replace(/is due .*\.$/, `is due ${dueAt.toDateString()}.`) } })
+  for (const award of [award6, award7]) {
+    const order = await prisma.order.findUnique({ where: { orderNumber: award.orderNumber } })
+    const awarded = await prisma.award.findUnique({ where: { id: award.awardId } })
+    const inv = await prisma.invoice.findUnique({ where: { invoiceNumber: award.invoiceNumber } })
+    const dueAt = addBusinessDays(new Date(awarded.awardedAt), settings.paymentDueBusinessDays, tz)
+    await prisma.invoice.update({ where: { id: inv.id }, data: { dueAt, updatedAt: inv.updatedAt } })
+    await prisma.order.update({ where: { id: order.id }, data: { updatedAt: order.updatedAt, paymentDueAt: dueAt, ...(order.readyAt ? { removalDueAt: addBusinessDays(new Date(order.readyAt), settings.removalBusinessDays, tz) } : {}) } })
+    for (const n of await prisma.notification.findMany({ where: { type: 'lot_won', link: { endsWith: award.invoiceNumber } } })) {
+      await prisma.notification.update({ where: { id: n.id }, data: { body: n.body.replace(/is due .*\.$/, `is due ${dueAt.toDateString()}.`) } })
+    }
   }
+  // The statement prints its publish date; draw it again with the date it now has.
+  await prisma.$transaction((tx: any) => rerenderSettlement(tx, settlement1.id), { timeout: 120_000 })
   for (const c of [cert1, cert2]) {
     const before = await prisma.certificate.findUnique({ where: { id: c.id }, select: { issuedAt: true, updatedAt: true } })
     await prisma.$transaction((tx: any) => rerenderCertificate(tx, c.id), { timeout: 120_000 })
@@ -527,6 +550,9 @@ export async function seedStarterRecords(context: Ctx, options: { password?: str
   const lotRows = await prisma.lot.findMany({ where: { saleEventId: event.id }, select: { lotNumber: true, title: true, status: true, format: true, bidBasis: true, bidCount: true }, orderBy: { lotNumber: 'asc' } })
   records.saleEvent = { title: event.title, lots: lotRows }
   records.paidOrder = { orderNumber: award6.orderNumber, invoiceNumber: award6.invoiceNumber, buyer: 'Bluewater IT Asset Trading Inc.' }
+  const finalJobs = await prisma.job.findMany({ where: { id: { in: [job1, job2, job3, job4] } }, select: { id: true, jobNumber: true, status: true } })
+  records.jobs = [job1, job2, job3, job4].map((id) => finalJobs.find((j: any) => j.id === id)).map((j: any) => ({ jobNumber: j.jobNumber, status: j.status }))
+  records.settlement = { settlementNumber: published1.settlementNumber, jobNumber: records.jobs[0].jobNumber, status: published1.status, netMinor: published1.netMinor, soldOn: { lotNumber: n7, orderNumber: award7.orderNumber, invoiceNumber: award7.invoiceNumber, buyer: 'Northgate Refurbishing LLC' } }
 
   return { password, logins, records }
 }

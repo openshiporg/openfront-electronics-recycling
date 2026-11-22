@@ -167,4 +167,17 @@ export async function recordSettlementPayout(context: Ctx, args: { settlementId:
   return result
 }
 
+/** Draws the published statement again from the current rows (the starter moves its dates); keeps the file's place in time. */
+export async function rerenderSettlement(tx: Tx, settlementId: string) {
+  const s = await tx.settlement.findUnique({ where: { id: settlementId } })
+  if (!s?.pdfId) return
+  const old = await tx.storedFile.findUnique({ where: { id: s.pdfId }, select: { id: true, uploadedById: true, createdAt: true } })
+  const pdf = await settlementPdf(tx, s)
+  const file = await storeFile(tx, { filename: `${s.settlementNumber}.pdf`, mimeType: 'application/pdf', bytes: pdf, purpose: 'settlement', ownerClientOrganizationId: s.organizationId, uploadedById: old?.uploadedById ?? null })
+  const at = s.publishedAt ?? old?.createdAt ?? new Date()
+  await tx.storedFile.update({ where: { id: file.id }, data: { createdAt: at, updatedAt: at } })
+  await tx.settlement.update({ where: { id: s.id }, data: { pdfId: file.id, updatedAt: s.updatedAt } })
+  if (old) await tx.storedFile.delete({ where: { id: old.id } })
+}
+
 export { settlementPdf }

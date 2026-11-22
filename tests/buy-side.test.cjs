@@ -8,7 +8,7 @@ const { getTestContext, skipReason, root, uid } = require('./support/db.cjs')
 const f = require('./support/fixtures.cjs')
 
 const skip = skipReason()
-let ctx, jobs, proc, lots, sheets, services, XLSX, staffCtx, staffUser, driverUser, driverCtx
+let ctx, jobs, proc, lots, sheets, settle, docs, services, XLSX, staffCtx, staffUser, driverUser, driverCtx
 
 test.before(async () => {
   if (skip) return
@@ -17,6 +17,8 @@ test.before(async () => {
   proc = require(path.join(root, 'features/keystone/domain/process.ts'))
   lots = require(path.join(root, 'features/keystone/domain/lots.ts'))
   sheets = require(path.join(root, 'features/keystone/domain/sheets.ts'))
+  settle = require(path.join(root, 'features/keystone/domain/settlements.ts'))
+  docs = require(path.join(root, 'features/keystone/domain/documents.ts'))
   services = require(path.join(root, 'features/keystone/lib/services.ts'))
   XLSX = require('xlsx')
   staffUser = await f.staff(ctx.prisma)
@@ -35,12 +37,12 @@ async function category(name, dataBearing) {
 }
 
 /** A client job driven by the real functions up to `until`: requested | quoted | collected | received. */
-async function job(until = 'received', containers = [{ label: 'P01', sealNumber: 'S-1', grossWeight: 200 }]) {
+async function job(until = 'received', containers = [{ label: 'P01', sealNumber: 'S-1', grossWeight: 200 }], quote = { pricingModel: 'fee_for_service', lines: [{ description: 'Collection', quantity: 1, unitPriceMinor: 15_000, kind: 'pickup' }] }) {
   const org = await ctx.prisma.clientOrganization.create({ data: { name: `Meridian Health ${uid()}`, legalName: 'Meridian Health Partners, Inc.' } })
   const out = await jobs.requestJob(staffCtx, { organizationId: org.id, contactName: 'Laura Chen', contactEmail: 'laura@meridian.example', site: { addressLine1: '1200 Riverside Dr', city: 'Columbus', region: 'OH', postalCode: '43215', countryCode: 'US' }, requestedDates: [today()], hasDataBearing: true, services: ['pickup', 'data_destruction'] })
   const jobId = out.jobId
   if (until === 'requested') return { jobId, org }
-  await jobs.quoteJob(staffCtx, { jobId, pricingModel: 'fee_for_service', lines: [{ description: 'Collection', quantity: 1, unitPriceMinor: 15_000, kind: 'pickup' }] })
+  await jobs.quoteJob(staffCtx, { jobId, ...quote })
   if (until === 'quoted') return { jobId, org }
   await jobs.recordJobAcceptance(staffCtx, { jobId, signatureName: 'Laura Chen', note: 'Signed quote returned by email.' })
   await jobs.scheduleJob(staffCtx, { jobId, date: today(), windowStart: '08:00', windowEnd: '10:00', driverId: driverUser.id, vehicle: 'Box truck 2' })
@@ -191,6 +193,64 @@ test('sanitisation gate on a direct list write: updateAsset cannot make an unsan
   await proc.recordSanitization(staffCtx, { assetIds: [a.id], method: 'purge', technique: 'crypto_erase', result: 'passed' })
   await ctx.sudo.db.Asset.updateOne({ where: { id: a.id }, data: { status: 'ready_for_sale' } })
   assert.equal((await ctx.prisma.asset.findUnique({ where: { id: a.id } })).status, 'ready_for_sale')
+})
+
+test('settlement: build from sold assets, review, publish with a PDF the client downloads, staff records a dispute, republish, pay out', { skip }, async () => {
+  const { jobId, org } = await job('received', undefined, { pricingModel: 'revenue_share', revenueShareBps: 7000, lines: [{ description: 'Drive shredding', quantity: 4, unitPriceMinor: 1_000, kind: 'shred' }] })
+  const monitors = await category('Monitors', false)
+  const m1 = await asset(jobId, monitors, { model: 'P2419H' })
+  const m2 = await asset(jobId, monitors, { model: 'P2419H' })
+  await proc.setAssetDisposition(staffCtx, { assetIds: [m1.id, m2.id], disposition: 'resale' })
+  const draft = await lots.createLotFromAssets(staffCtx, { assetIds: [m1.id, m2.id], title: `Monitors ${uid()}` })
+  await ctx.prisma.lot.update({ where: { id: draft.id }, data: { closesAt: new Date(Date.now() + 3_600_000) } })
+  await lots.publishLot(staffCtx, { lotId: draft.id })
+  const { user: buyerUser } = await f.buyer(ctx.prisma)
+  const bid = await lots.placeBid(await ctx.as(buyerUser.id), { lotNumber: draft.lotNumber, amountMinor: 17_300, idempotencyKey: f.key() })
+  await f.closeLot(ctx.prisma, draft.id, lots.advanceLotClock)
+  await lots.awardLot(staffCtx, { lotId: draft.id, bidId: bid.bidId })
+  const won = await ctx.prisma.notification.findFirst({ where: { userId: buyerUser.id, type: 'lot_won' } })
+  assert.match(won.body, /for \$\d{1,3}(,\d{3})*\.\d{2} is due/, 'invoice amount in the store currency')
+
+  const built = await settle.buildSettlement(staffCtx, { jobId })
+  const lines = await ctx.prisma.settlementLine.findMany({ where: { settlementId: built.id }, orderBy: { createdAt: 'asc' } })
+  assert.deepEqual(lines.map((l) => l.kind).sort(), ['asset_value', 'asset_value', 'service_fee'])
+  assert.equal(lines.filter((l) => l.kind === 'asset_value').reduce((s, l) => s + l.grossMinor, 0), 17_300, 'the sold price of the job\'s assets')
+  assert.equal(built.clientShareTotalMinor, lines.filter((l) => l.kind === 'asset_value').reduce((s, l) => s + l.clientAmountMinor, 0))
+  assert.equal(built.feesTotalMinor, 4_000)
+  assert.equal(built.netMinor, built.clientShareTotalMinor - 4_000)
+  const adjusted = await settle.addSettlementLine(staffCtx, { settlementId: built.id, line: { kind: 'adjustment', description: 'Pallet return credit', grossMinor: 2_500 } })
+  assert.equal(adjusted.netMinor, built.netMinor + 2_500)
+
+  await settle.submitSettlementForReview(staffCtx, { settlementId: built.id })
+  const client = await ctx.prisma.user.create({ data: { name: `Laura Chen ${uid()}`, email: `client-${uid()}@meridian.example`, password: 'x'.repeat(60), kind: 'client', clientRole: 'admin', clientOrganizationId: org.id, isActive: true } })
+  const clientCtx = await ctx.as(client.id)
+  await assert.rejects(docs.downloadSettlement(clientCtx, { settlementNumber: built.settlementNumber }), /not found/, 'not visible before publish')
+  const published = await settle.publishSettlement(staffCtx, { settlementId: built.id })
+  assert.equal(published.status, 'published')
+  const pdf = await docs.downloadSettlement(clientCtx, { settlementNumber: built.settlementNumber })
+  assert.equal(pdf.mimeType, 'application/pdf')
+  assert.equal(Buffer.from(pdf.base64, 'base64').subarray(0, 5).toString(), '%PDF-')
+  const notice = await ctx.prisma.notification.findFirst({ where: { userId: client.id, type: 'settlement_published' } })
+  assert.match(notice.body, /We owe you \$\d/, 'net in the store currency')
+  const other = await ctx.prisma.clientOrganization.create({ data: { name: `Other ${uid()}` } })
+  const stranger = await ctx.prisma.user.create({ data: { name: 'Other client', email: `other-${uid()}@example.com`, password: 'x'.repeat(60), kind: 'client', clientRole: 'admin', clientOrganizationId: other.id, isActive: true } })
+  await assert.rejects(docs.downloadSettlement(await ctx.as(stranger.id), { settlementNumber: built.settlementNumber }), /not found/, 'another client cannot read it')
+
+  await assert.rejects(settle.recordSettlementDispute(staffCtx, { settlementId: built.id, note: '' }), /Write what the client disputes/)
+  const disputed = await settle.recordSettlementDispute(staffCtx, { settlementId: built.id, note: 'Client says one monitor was theirs to keep.' })
+  assert.equal(disputed.status, 'disputed')
+  assert.equal(disputed.disputeRecordedById, staffUser.id)
+  await assert.rejects(settle.recordSettlementPayout(staffCtx, { settlementId: built.id, method: 'ach', reference: 'ACH 1' }), /Resolve the dispute/)
+  const audit = await ctx.prisma.auditEvent.findFirst({ where: { entityId: built.id, action: 'settlement.disputed' } })
+  assert.equal(audit.reason, 'Client says one monitor was theirs to keep.')
+  assert.ok((await docs.downloadSettlement(clientCtx, { settlementNumber: built.settlementNumber })).base64, 'still downloadable while disputed')
+
+  await settle.removeSettlementLine(staffCtx, { lineId: (await ctx.prisma.settlementLine.findFirst({ where: { settlementId: built.id, kind: 'adjustment' } })).id })
+  const again = await settle.publishSettlement(staffCtx, { settlementId: built.id })
+  assert.equal(again.status, 'published')
+  assert.notEqual(again.pdfId, published.pdfId, 'a new statement PDF')
+  const paid = await settle.recordSettlementPayout(staffCtx, { settlementId: built.id, method: 'ach', reference: 'ACH 20261122' })
+  assert.equal(paid.status, 'paid')
 })
 
 test('link base: saved site address first, else the origin of a staff request, never a buyer\'s Host header', { skip }, async () => {
