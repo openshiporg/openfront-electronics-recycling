@@ -36,9 +36,9 @@ module.exports = __toCommonJS(keystone_exports);
 
 // features/keystone/index.ts
 var import_auth = require("@keystone-6/auth");
-var import_core26 = require("@keystone-6/core");
+var import_core28 = require("@keystone-6/core");
 var import_config = require("dotenv/config");
-var import_node_crypto6 = require("node:crypto");
+var import_node_crypto7 = require("node:crypto");
 
 // features/keystone/models/people.ts
 var import_core2 = require("@keystone-6/core");
@@ -106,6 +106,8 @@ var rules = {
   canUpdatePeople: ({ session }) => {
     if (!session) return false;
     if (hasPermission(session, "canManageUsers")) return true;
+    const kinds = [hasPermission(session, "canManageBuyers") && "buyer", hasPermission(session, "canManageClients") && "client"].filter(Boolean);
+    if (kinds.length) return { OR: [{ id: { equals: session.itemId } }, { kind: { in: kinds } }] };
     return { id: { equals: session.itemId } };
   }
 };
@@ -194,8 +196,9 @@ async function requireClient(context, options2 = {}) {
   if (options2.admin && user.clientRole !== "admin") fail("Only your organisation admin can do this.");
   return { session, user, organizationId: user.clientOrganizationId };
 }
-async function inTransaction(context, fn) {
-  return context.prisma.$transaction(fn, { timeout: 2e4, maxWait: 1e4 });
+var BULK = { timeout: 18e4 };
+async function inTransaction(context, fn, options2 = {}) {
+  return context.prisma.$transaction(fn, { timeout: options2.timeout ?? 2e4, maxWait: 1e4 });
 }
 var LOCKABLE = /* @__PURE__ */ new Set([
   "Lot",
@@ -321,7 +324,7 @@ async function command(fn) {
   try {
     return { success: true, error: null, data: await fn() };
   } catch (error) {
-    if (error instanceof DomainError) return { success: false, error: error.message, data: null };
+    if (error instanceof DomainError || error?.name === "RuleError") return { success: false, error: error.message, data: null };
     const code = error?.code;
     if (code === "P2002") return { success: false, error: "This was already done. Reload to see the latest state.", data: null };
     if (code === "P2034" || code === "P2028") return { success: false, error: "Another change was saved at the same moment. Try again.", data: null };
@@ -404,10 +407,11 @@ var User = (0, import_core2.list)({
   access: {
     operation: {
       ...(0, import_access3.allOperations)(isSignedIn),
-      create: permissions.canManageUsers,
+      create: anyPeopleManager,
       delete: permissions.canManageUsers
     },
-    filter: { query: rules.canReadPeople, update: rules.canUpdatePeople }
+    filter: { query: rules.canReadPeople, update: rules.canUpdatePeople },
+    item: { create: portalUserCreate }
   },
   ui: {
     hideCreate: (args) => !permissions.canManageUsers(args),
@@ -441,11 +445,11 @@ var User = (0, import_core2.list)({
       ],
       defaultValue: "staff",
       validation: { isRequired: true },
-      access: { create: permissions.canManageUsers, update: permissions.canManageUsers }
+      access: { create: anyPeopleManager, update: permissions.canManageUsers }
     }),
     buyerCompany: (0, import_fields3.relationship)({
       ref: "BuyerCompany.users",
-      access: { create: permissions.canManageUsers, update: anyBuyerManager }
+      access: { create: anyBuyerManager, update: anyBuyerManager }
     }),
     buyerRole: (0, import_fields3.select)({
       type: "enum",
@@ -496,6 +500,13 @@ function anyClientManager(args) {
 }
 function anyPeopleManager(args) {
   return anyBuyerManager(args) || anyClientManager(args);
+}
+function portalUserCreate({ session, inputData }) {
+  if (hasPermission(session, "canManageUsers")) return true;
+  if (inputData.role) return false;
+  if (inputData.kind === "buyer") return hasPermission(session, "canManageBuyers") && Boolean(inputData.buyerCompany) && !inputData.clientOrganization;
+  if (inputData.kind === "client") return hasPermission(session, "canManageClients") && Boolean(inputData.clientOrganization) && !inputData.buyerCompany;
+  return false;
 }
 var permissionFields = Object.fromEntries(
   ROLE_PERMISSIONS.map((permission) => [permission, (0, import_fields3.checkbox)({ defaultValue: false })])
@@ -686,6 +697,12 @@ var import_core3 = require("@keystone-6/core");
 var import_fields5 = require("@keystone-6/core/fields");
 
 // features/keystone/lib/rules/lifecycle.ts
+var RuleError = class extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "RuleError";
+  }
+};
 var JOB_TRANSITIONS = {
   quote: { from: ["requested", "quoted"], to: "quoted" },
   accept: { from: ["quoted"], to: "accepted" },
@@ -703,8 +720,8 @@ var JOB_TRANSITIONS = {
 var AFTER_COLLECTION = ["collected", "received", "processing", "completed", "settled"];
 function jobTransition(action, current) {
   const rule = JOB_TRANSITIONS[action];
-  if (!rule) throw new Error(`Unknown job action ${action}.`);
-  if (!rule.from.includes(current)) throw new Error(`A job that is ${current.replace(/_/g, " ")} cannot be moved to ${rule.to.replace(/_/g, " ")}.`);
+  if (!rule) throw new RuleError(`Unknown job action ${action}.`);
+  if (!rule.from.includes(current)) throw new RuleError(`A job that is ${current.replace(/_/g, " ")} cannot be moved to ${rule.to.replace(/_/g, " ")}.`);
   return rule.to;
 }
 function sanitizationAllowsSale(asset) {
@@ -2180,13 +2197,16 @@ async function redirectToInit(root, args, context) {
 }
 var redirectToInit_default = redirectToInit;
 
+// features/keystone/mutations/operations.ts
+var import_graphql = require("graphql");
+
 // features/keystone/lib/services.ts
 var import_node_crypto3 = require("node:crypto");
 var import_nodemailer = require("nodemailer");
 async function getSettings(db) {
-  const existing = await db.storeSettings.findFirst();
+  const existing = await db.storeSettings.findUnique({ where: { id: 1 } });
   if (existing) return existing;
-  return db.storeSettings.create({ data: {} });
+  return db.storeSettings.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
 }
 var MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 var ALLOWED_TYPES = /^(image\/(jpeg|png|webp|gif)|application\/pdf|text\/csv|text\/plain|application\/vnd\.ms-excel|application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet|application\/octet-stream|application\/xml|text\/xml)$/;
@@ -2281,7 +2301,7 @@ async function deliverPendingEmail(context) {
     if (!smtp) return;
     const pending = await context.prisma.notification.findMany({ where: { emailStatus: "queued" }, take: 50, orderBy: { createdAt: "asc" }, include: { user: { select: { email: true, name: true } } } });
     if (!pending.length) return;
-    const transport2 = (0, import_nodemailer.createTransport)({ host: smtp.host, port: smtp.port, secure: smtp.port === 465, auth: smtp.user ? { user: smtp.user, pass: smtp.pass } : void 0 });
+    const transport = (0, import_nodemailer.createTransport)({ host: smtp.host, port: smtp.port, secure: smtp.port === 465, auth: smtp.user ? { user: smtp.user, pass: smtp.pass } : void 0 });
     const base = (process.env.SMTP_STORE_LINK || settings.storefrontUrl || "").replace(/\/$/, "");
     for (const n of pending) {
       const claimed = await context.prisma.notification.updateMany({ where: { id: n.id, emailStatus: "queued" }, data: { emailStatus: "sent" } });
@@ -2289,7 +2309,7 @@ async function deliverPendingEmail(context) {
       try {
         if (!n.user?.email) throw new Error("No email address");
         const link = n.link ? `${base}${n.link}` : "";
-        await transport2.sendMail({
+        await transport.sendMail({
           from: smtp.from ? `${settings.businessName} <${smtp.from}>` : void 0,
           to: n.user.email,
           subject: n.title,
@@ -2520,16 +2540,16 @@ async function reinstateBuyer(context, args) {
 async function reviewBuyerDocument(context, args) {
   const status2 = ["accepted", "rejected"].includes(args.status) ? args.status : fail("Choose accept or reject.");
   return inTransaction(context, async (tx) => {
-    const doc = await tx.buyerDocument.findUnique({ where: { id: str(args.documentId, 60) } });
-    if (!doc) fail("Document not found.");
-    await lockRow(tx, "BuyerCompany", doc.companyId);
-    const expiresOn = args.expiresOn && /^\d{4}-\d{2}-\d{2}$/.test(args.expiresOn) ? /* @__PURE__ */ new Date(`${args.expiresOn}T00:00:00Z`) : doc.expiresOn;
-    const updated = await tx.buyerDocument.update({ where: { id: doc.id }, data: { status: status2, reviewNote: str(args.note, 500), expiresOn } });
-    if (status2 === "accepted" && doc.type === "resale_certificate") {
-      const company = await tx.buyerCompany.findUnique({ where: { id: doc.companyId } });
-      if (company.taxStatus === "taxable" && (!expiresOn || expiresOn > /* @__PURE__ */ new Date())) await tx.buyerCompany.update({ where: { id: doc.companyId }, data: { taxStatus: "exempt_resale" } });
+    const doc2 = await tx.buyerDocument.findUnique({ where: { id: str(args.documentId, 60) } });
+    if (!doc2) fail("Document not found.");
+    await lockRow(tx, "BuyerCompany", doc2.companyId);
+    const expiresOn = args.expiresOn && /^\d{4}-\d{2}-\d{2}$/.test(args.expiresOn) ? /* @__PURE__ */ new Date(`${args.expiresOn}T00:00:00Z`) : doc2.expiresOn;
+    const updated = await tx.buyerDocument.update({ where: { id: doc2.id }, data: { status: status2, reviewNote: str(args.note, 500), expiresOn } });
+    if (status2 === "accepted" && doc2.type === "resale_certificate") {
+      const company = await tx.buyerCompany.findUnique({ where: { id: doc2.companyId } });
+      if (company.taxStatus === "taxable" && (!expiresOn || expiresOn > /* @__PURE__ */ new Date())) await tx.buyerCompany.update({ where: { id: doc2.companyId }, data: { taxStatus: "exempt_resale" } });
     }
-    await audit(tx, { actorId: context.session.itemId, action: `buyer_document.${status2}`, entityType: "BuyerDocument", entityId: doc.id, reason: str(args.note, 500) });
+    await audit(tx, { actorId: context.session.itemId, action: `buyer_document.${status2}`, entityType: "BuyerDocument", entityId: doc2.id, reason: str(args.note, 500) });
     return updated;
   });
 }
@@ -2634,11 +2654,11 @@ function clip(text8, font, size, width) {
   return `${value}...`;
 }
 async function renderPdf(input) {
-  const doc = await import_pdf_lib.PDFDocument.create();
-  const font = await doc.embedFont(import_pdf_lib.StandardFonts.Helvetica);
-  const bold = await doc.embedFont(import_pdf_lib.StandardFonts.HelveticaBold);
+  const doc2 = await import_pdf_lib.PDFDocument.create();
+  const font = await doc2.embedFont(import_pdf_lib.StandardFonts.Helvetica);
+  const bold = await doc2.embedFont(import_pdf_lib.StandardFonts.HelveticaBold);
   const width = PAGE[0] - MARGIN * 2;
-  let page = doc.addPage(PAGE);
+  let page = doc2.addPage(PAGE);
   let y = PAGE[1] - MARGIN;
   const grey = (0, import_pdf_lib.rgb)(0.4, 0.4, 0.4);
   const header = () => {
@@ -2653,7 +2673,7 @@ async function renderPdf(input) {
   };
   const ensure = (needed) => {
     if (y - needed < MARGIN + 20) {
-      page = doc.addPage(PAGE);
+      page = doc2.addPage(PAGE);
       y = PAGE[1] - MARGIN;
       header();
     }
@@ -2737,12 +2757,12 @@ async function renderPdf(input) {
       y -= 14;
     }
   }
-  const pages = doc.getPages();
+  const pages = doc2.getPages();
   pages.forEach((p, i) => {
     const text8 = safe(`${input.footer ? `${input.footer}   ` : ""}Page ${i + 1} of ${pages.length}`);
     p.drawText(text8, { x: MARGIN, y: MARGIN - 20, size: 8, font, color: grey });
   });
-  return Buffer.from(await doc.save());
+  return Buffer.from(await doc2.save());
 }
 
 // features/keystone/domain/money.ts
@@ -2762,6 +2782,32 @@ function addBusinessDays(start, days, timeZone = "UTC") {
     if (day !== 0 && day !== 6) remaining--;
   }
   return date;
+}
+function zonedInstant(date, time, timeZone) {
+  const guess = /* @__PURE__ */ new Date(`${date}T${time}:00Z`);
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).formatToParts(guess).map((p) => [p.type, p.value]));
+  const shown = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute));
+  const first = new Date(guess.getTime() - (shown - guess.getTime()));
+  const p2 = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).formatToParts(first).map((p) => [p.type, p.value]));
+  const shown2 = Date.UTC(Number(p2.year), Number(p2.month) - 1, Number(p2.day), Number(p2.hour), Number(p2.minute));
+  return new Date(first.getTime() - (shown2 - guess.getTime()));
+}
+function dockSlots(args) {
+  const weekday2 = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"][(/* @__PURE__ */ new Date(`${args.date}T12:00:00Z`)).getUTCDay()];
+  const window = args.hours?.[weekday2];
+  const match = typeof window === "string" ? window.match(/^(\d{2}):(\d{2})-(\d{2}):(\d{2})$/) : null;
+  if (!match) return { open: false, slots: [] };
+  const minutes = Math.max(15, args.slotMinutes || 60);
+  const from = zonedInstant(args.date, `${match[1]}:${match[2]}`, args.timeZone);
+  const to = zonedInstant(args.date, `${match[3]}:${match[4]}`, args.timeZone);
+  const slots = [];
+  for (let t = from.getTime(); t + minutes * 6e4 <= to.getTime(); t += minutes * 6e4) {
+    const startsAt = new Date(t);
+    const endsAt = new Date(t + minutes * 6e4);
+    const taken = args.booked.filter((b) => new Date(b.startsAt) < endsAt && new Date(b.endsAt) > startsAt).length;
+    slots.push({ startsAt, endsAt, taken, free: Math.max(0, Math.max(1, args.perWindow || 1) - taken) });
+  }
+  return { open: true, slots };
 }
 
 // features/integrations/payment/stripe.ts
@@ -3339,15 +3385,15 @@ function perLineTotal(lines, prices) {
   const out = [];
   for (const price of prices) {
     const line = byId.get(price.lotLineId);
-    if (!line) throw new Error("A bid line does not belong to this lot.");
-    if (seen.has(price.lotLineId)) throw new Error(`Line ${line.lineNumber} appears twice.`);
+    if (!line) throw new RuleError("A bid line does not belong to this lot.");
+    if (seen.has(price.lotLineId)) throw new RuleError(`Line ${line.lineNumber} appears twice.`);
     seen.add(price.lotLineId);
     const unit = Math.round(Number(price.unitPriceMinor));
-    if (!Number.isSafeInteger(unit) || unit < 0) throw new Error(`Line ${line.lineNumber} has an invalid price.`);
+    if (!Number.isSafeInteger(unit) || unit < 0) throw new RuleError(`Line ${line.lineNumber} has an invalid price.`);
     if (unit === 0) continue;
     out.push({ lotLineId: line.id, unitPriceMinor: unit, quantity: line.quantity, totalMinor: unit * line.quantity });
   }
-  if (!out.length) throw new Error("Enter a price on at least one line.");
+  if (!out.length) throw new RuleError("Enter a price on at least one line.");
   return { lines: out, totalMinor: out.reduce((s, l) => s + l.totalMinor, 0) };
 }
 function planPerLineAward(bids, selection) {
@@ -3355,12 +3401,12 @@ function planPerLineAward(bids, selection) {
   const seenLines = /* @__PURE__ */ new Set();
   const groups = /* @__PURE__ */ new Map();
   for (const pick of selection) {
-    if (seenLines.has(pick.lotLineId)) throw new Error("A line can be awarded to one buyer only.");
+    if (seenLines.has(pick.lotLineId)) throw new RuleError("A line can be awarded to one buyer only.");
     seenLines.add(pick.lotLineId);
     const bid = byBid.get(pick.bidId);
-    if (!bid) throw new Error("A chosen bid is no longer valid.");
+    if (!bid) throw new RuleError("A chosen bid is no longer valid.");
     const line = bid.lines.find((l) => l.lotLineId === pick.lotLineId);
-    if (!line) throw new Error("The chosen bid has no price for that line.");
+    if (!line) throw new RuleError("The chosen bid has no price for that line.");
     const group = groups.get(bid.id) ?? { bid, lines: [] };
     group.lines.push({ lotLineId: line.lotLineId, bidLineId: line.id, quantity: line.quantity, unitPriceMinor: line.unitPriceMinor, totalMinor: line.unitPriceMinor * line.quantity });
     groups.set(bid.id, group);
@@ -3566,7 +3612,7 @@ async function publishSaleEvent(context, args) {
     }
     await audit(tx, { actorId: staffId, action: "sale_event.published", entityType: "SaleEvent", entityId: event.id, after: { problems } });
     return updated;
-  });
+  }, BULK);
   afterCommit(context);
   return { saleEvent: result, problems };
 }
@@ -3924,7 +3970,7 @@ async function awardLot(context, args) {
     }
     if (!args.bidId) fail("Choose the winning bid.");
     return [await createWholeLotAward(tx, { lotId: args.lotId, bidId: args.bidId, actorId, reason, confirmBelowReserve: Boolean(args.confirmBelowReserve) })];
-  });
+  }, BULK);
   afterCommit(context);
   return result;
 }
@@ -4037,7 +4083,7 @@ async function createLotFromAssets(context, args) {
     }
     await audit(tx, { actorId: context.session.itemId, action: "lot.created_from_assets", entityType: "Lot", entityId: lot.id, after: { assets: ids.length, lines: n } });
     return lot;
-  });
+  }, BULK);
 }
 async function removeAssetsFromLot(context, args) {
   return inTransaction(context, async (tx) => {
@@ -4278,8 +4324,13 @@ async function bookDockAppointment(context, args) {
     const facility = await tx.facility.findUnique({ where: { id: args.facilityId } });
     if (!facility.isActive) fail("This facility is not active.");
     const minutes = Math.max(15, facility.dockSlotMinutes || 60);
-    const slotStart = new Date(Math.floor(startsAt.getTime() / (minutes * 6e4)) * minutes * 6e4);
-    const endsAt = new Date(slotStart.getTime() + minutes * 6e4);
+    const settings = await getSettings(tx);
+    const localDate = new Intl.DateTimeFormat("en-CA", { timeZone: settings.timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(startsAt);
+    const grid = dockSlots({ date: localDate, hours: facility.hours, slotMinutes: minutes, perWindow: 1, timeZone: settings.timezone, booked: [] });
+    const slot = grid.slots.find((g) => g.startsAt <= startsAt && startsAt < g.endsAt);
+    if (!slot) fail(grid.open ? `That time is outside ${facility.name}'s dock hours.` : `${facility.name} is closed that day.`);
+    const slotStart = slot.startsAt;
+    const endsAt = slot.endsAt;
     if (slotStart.getTime() < Date.now() - minutes * 6e4) fail("That slot is in the past.");
     const taken = await tx.dockAppointment.count({ where: { facilityId: facility.id, status: { in: ["booked", "arrived"] }, startsAt: { lt: endsAt }, endsAt: { gt: slotStart }, ...args.appointmentId ? { id: { not: args.appointmentId } } : {} } });
     if (taken >= Math.max(1, facility.dockSlotsPerWindow || 1)) fail("That slot is full. Choose another time.");
@@ -4313,23 +4364,36 @@ async function bookDockAppointment(context, args) {
   return result;
 }
 async function setDockAppointmentStatus(context, args) {
-  const status2 = ["arrived", "done", "cancelled", "no_show"].includes(args.status) ? args.status : fail("Choose arrived, done, cancelled or no-show.");
-  return inTransaction(context, async (tx) => {
+  const status2 = str(args.status, 20);
+  const allowed = { arrived: ["booked"], done: ["booked", "arrived"], no_show: ["booked"], cancelled: ["booked", "arrived"] };
+  if (!allowed[status2]) fail("Choose arrived, done, no-show or cancelled.");
+  const result = await inTransaction(context, async (tx) => {
     await lockRow(tx, "DockAppointment", args.appointmentId) || fail("Appointment not found.");
-    const appt = await tx.dockAppointment.findUnique({ where: { id: args.appointmentId } });
-    if (["done", "cancelled"].includes(appt.status)) fail(`This appointment is already ${appt.status}.`);
-    await audit(tx, { actorId: context.session.itemId, action: `dock.${status2}`, entityType: "DockAppointment", entityId: appt.id });
-    return tx.dockAppointment.update({ where: { id: appt.id }, data: { status: status2 } });
+    const appt = await tx.dockAppointment.findUnique({ where: { id: args.appointmentId }, include: { order: true } });
+    if (!allowed[status2].includes(appt.status)) fail(`A slot that is ${appt.status.replace(/_/g, " ")} cannot be marked ${status2.replace(/_/g, " ")}.`);
+    const note = str(args.note, 500);
+    const updated = await tx.dockAppointment.update({ where: { id: appt.id }, data: { status: status2, ...note ? { notes: [appt.notes, note].filter(Boolean).join("\n") } : {} } });
+    if (status2 === "cancelled" && appt.order) {
+      await notify(tx, { userIds: await companyUsers(tx, appt.order.companyId), type: "dock_cancelled", title: `Pickup slot for ${appt.order.orderNumber} cancelled`, body: note || "Book another slot from your order.", link: `/buyer/orders/${appt.order.orderNumber}` });
+    }
+    await audit(tx, { actorId: context.session.itemId, action: `dock.${status2}`, entityType: "DockAppointment", entityId: appt.id, before: { status: appt.status }, after: { status: status2 }, reason: note || void 0 });
+    return updated;
   });
+  afterCommit(context);
+  return result;
 }
 async function dockDay(context, args) {
   const facility = await context.prisma.facility.findUnique({ where: { id: args.facilityId } });
   if (!facility) fail("Facility not found.");
   const day = /^\d{4}-\d{2}-\d{2}$/.test(args.date) ? args.date : (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
-  const start = /* @__PURE__ */ new Date(`${day}T00:00:00Z`);
-  const end = new Date(start.getTime() + 864e5);
+  const tz = (await getSettings(context.prisma)).timezone;
+  const start = zonedInstant(day, "00:00", tz);
+  const end = new Date(zonedInstant(new Date(Date.parse(`${day}T12:00:00Z`) + 864e5).toISOString().slice(0, 10), "00:00", tz));
   const appointments = await context.prisma.dockAppointment.findMany({ where: { facilityId: facility.id, startsAt: { gte: start, lt: end } }, include: { order: { select: { id: true, orderNumber: true, company: { select: { legalName: true } } } }, job: { select: { id: true, jobNumber: true, organization: { select: { name: true } } } } }, orderBy: { startsAt: "asc" } });
-  return { facility: { id: facility.id, name: facility.name, slotMinutes: facility.dockSlotMinutes, perWindow: facility.dockSlotsPerWindow, hours: facility.hours }, appointments };
+  const settings = await getSettings(context.prisma);
+  const live = appointments.filter((a) => ["booked", "arrived"].includes(a.status));
+  const grid = dockSlots({ date: day, hours: facility.hours, slotMinutes: facility.dockSlotMinutes, perWindow: facility.dockSlotsPerWindow, timeZone: settings.timezone, booked: live });
+  return { date: day, timeZone: settings.timezone, facility: { id: facility.id, name: facility.name, slotMinutes: facility.dockSlotMinutes, perWindow: facility.dockSlotsPerWindow, hours: facility.hours }, open: grid.open, slots: grid.slots, appointments };
 }
 async function openClaim(context, args) {
   const reason = ["shortage", "wrong_item", "misgraded", "dead_on_arrival", "damage", "other"].includes(args.reason) ? args.reason : fail("Choose the reason.");
@@ -4664,6 +4728,46 @@ async function staffDownloadFile(context, args) {
   fail("Unknown document.");
 }
 
+// features/keystone/domain/files.ts
+var TARGETS = {
+  lot_image: { perm: ["canManageLots"], visibility: "private", purpose: "lot_image" },
+  logo: { perm: ["canManageSettings"], visibility: "public", purpose: "logo" },
+  certification_document: { perm: ["canManageSettings", "canIssueCertificates"], visibility: "private", purpose: "certification" },
+  vendor_due_diligence: { perm: ["canManageDownstream"], visibility: "private", purpose: "vendor_due_diligence" }
+};
+async function attachFile(context, args) {
+  const target = TARGETS[str(args.target, 40)] ?? fail("Unknown upload target.");
+  const session = requireStaff(context, ...target.perm);
+  const id = str(args.id, 60);
+  return inTransaction(context, async (tx) => {
+    const stored = await storeUpload(tx, args.file, { purpose: target.purpose, visibility: target.visibility, uploadedById: session.itemId });
+    if (!stored) fail("Choose a file.");
+    if (args.target !== "logo" && !id) fail("Choose the record.");
+    let entityType = "";
+    if (args.target === "lot_image") {
+      if (!/^image\//.test((await tx.storedFile.findUnique({ where: { id: stored.id }, select: { mimeType: true } })).mimeType)) fail("Lot photos must be images.");
+      const lot = await tx.lot.findUnique({ where: { id }, select: { id: true, _count: { select: { images: true } } } }) ?? fail("Lot not found.");
+      await tx.lotImage.create({ data: { lotId: lot.id, imageId: stored.id, caption: str(args.caption, 200), sortOrder: lot._count.images } });
+      entityType = "Lot";
+    } else if (args.target === "logo") {
+      await tx.storeSettings.update({ where: { id: 1 }, data: { logoId: stored.id } });
+      entityType = "StoreSettings";
+    } else if (args.target === "certification_document") {
+      ;
+      await tx.certification.findUnique({ where: { id } }) ?? fail("Certification not found.");
+      await tx.certification.update({ where: { id }, data: { documentId: stored.id } });
+      entityType = "Certification";
+    } else {
+      ;
+      await tx.downstreamVendor.findUnique({ where: { id } }) ?? fail("Vendor not found.");
+      await tx.downstreamVendor.update({ where: { id }, data: { dueDiligenceFileId: stored.id } });
+      entityType = "DownstreamVendor";
+    }
+    await audit(tx, { actorId: session.itemId, action: `file.attach.${args.target}`, entityType, entityId: id || "1", after: { fileId: stored.id, filename: stored.filename } });
+    return { fileId: stored.id };
+  });
+}
+
 // features/keystone/domain/jobs.ts
 var EMAIL2 = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 var SERVICES = ["pickup", "drop_off", "data_destruction", "onsite_shred", "itad", "recycling", "witness_destruction"];
@@ -4844,6 +4948,7 @@ async function scheduleJob(context, args) {
 }
 function assertDriver(context, job) {
   const role = context.session?.data?.role;
+  if (!role?.canCollect && !role?.canDispatch && !(role?.canReceive && job.type === "drop_off")) fail("Only the driver or dispatch can record a collection.");
   if (job.driverId && job.driverId !== context.session.itemId && !role?.canDispatch) fail("This stop is assigned to another driver.");
 }
 async function startJobRoute(context, args) {
@@ -5210,7 +5315,9 @@ function readWorkbook(bytes, sheetName) {
   if (!sheetNames.length) fail("The spreadsheet has no sheets.");
   const name = sheetName && sheetNames.includes(sheetName) ? sheetName : sheetNames[0];
   const sheet = workbook.Sheets[name];
-  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: "", blankrows: false, dateNF: "yyyy-mm-dd hh:mm" });
+  const range2 = sheet["!ref"] ? XLSX.utils.decode_range(sheet["!ref"]) : null;
+  const lead = Array.from({ length: range2?.s.r ?? 0 }, () => []);
+  const rows = [...lead, ...XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: "", blankrows: true, dateNF: "yyyy-mm-dd hh:mm" })];
   if (rows.length > MAX_SHEET_ROWS + 20) fail(`Spreadsheets can have at most ${MAX_SHEET_ROWS.toLocaleString()} rows.`);
   return { sheetNames, sheetName: name, rows: rows.map((r) => Array.isArray(r) ? r : []) };
 }
@@ -5323,7 +5430,7 @@ async function recordSanitization(context, args) {
     }
     await audit(tx, { actorId: staffId, action: "sanitization.recorded", entityType: "Asset", entityId: ids[0], after: { assets: ids.length, method, technique, result: outcome } });
     return out;
-  });
+  }, BULK);
 }
 async function importErasureReport(context, args) {
   const staffId = context.session.itemId;
@@ -5336,7 +5443,7 @@ async function importErasureReport(context, args) {
   const map = proposeMapping(headers, ERASURE_FIELDS);
   if (map.serial == null) fail("The report has no serial number column.");
   if (map.result == null) fail("The report has no result or status column.");
-  const parsed = sheet.rows.slice(headerRow + 1).filter((r) => r.some((c) => String(c ?? "").trim())).map((r, i) => {
+  const parsed = sheet.rows.slice(headerRow + 1).map((r, i) => [r, i]).filter(([r]) => r.some((c) => String(c ?? "").trim())).map(([r, i]) => {
     const serial = String(r[map.serial] ?? "").trim();
     const result = erasureResult(r[map.result]);
     const technique = erasureTechnique(map.method != null ? r[map.method] : "");
@@ -5427,7 +5534,7 @@ async function setAssetDisposition(context, args) {
     }
     await audit(tx, { actorId: staffId, action: "asset.disposition", entityType: "Asset", entityId: ids[0], after: { assets: ids.length, disposition } });
     return out;
-  });
+  }, BULK);
 }
 async function placeAssetHold(context, args) {
   const reason = str(args.reason, 500) || fail("Write the reason for the hold.");
@@ -5445,7 +5552,7 @@ async function placeAssetHold(context, args) {
     }
     await audit(tx, { actorId: staffId, action: "asset.hold", entityType: "Asset", entityId: ids[0] ?? "", after: { assets: out.length }, reason });
     return out;
-  });
+  }, BULK);
 }
 async function releaseAssetHold(context, args) {
   const staffId = context.session.itemId;
@@ -5460,7 +5567,7 @@ async function releaseAssetHold(context, args) {
     }
     await audit(tx, { actorId: staffId, action: "asset.hold_released", entityType: "Asset", entityId: ids[0] ?? "", after: { assets: out.length }, reason: str(args.note, 500) });
     return out;
-  });
+  }, BULK);
 }
 async function exportAssets(context, args) {
   const where = {};
@@ -5564,9 +5671,20 @@ async function issueCertificate(context, args) {
     await notify(tx, { userIds: await organizationUsers(tx, job.organizationId), type: "certificate_issued", title: `${cert.certificateNumber} for ${job.jobNumber}`, body: `Your ${type === "data_destruction" ? "data destruction" : "recycling"} certificate is ready to download.`, link: `/client/jobs/${job.jobNumber}` });
     await audit(tx, { actorId: context.session.itemId, action: "certificate.issued", entityType: "Certificate", entityId: cert.id, after: { type, jobId: job.id, replaces: replaces?.certificateNumber } });
     return updated;
-  });
+  }, BULK);
   afterCommit(context);
   return result;
+}
+async function rerenderCertificate(tx, certificateId) {
+  const cert = await tx.certificate.findUnique({ where: { id: certificateId }, include: { issuedBy: { select: { name: true } }, replaces: { select: { certificateNumber: true } } } });
+  if (!cert) fail("Certificate not found.");
+  const job = await tx.job.findUnique({ where: { id: cert.jobId } });
+  const snapshot = await certificateSnapshot(tx, job, cert.type, cert.issuedBy?.name ?? "Staff");
+  const pdf = await certificatePdf(tx, { ...cert, snapshot, replacesNumber: cert.replaces?.certificateNumber });
+  const old = cert.pdfId;
+  const file = await storeFile(tx, { filename: `${cert.certificateNumber}.pdf`, mimeType: "application/pdf", bytes: pdf, purpose: "certificate", ownerClientOrganizationId: job.organizationId, uploadedById: cert.issuedById });
+  await tx.certificate.update({ where: { id: cert.id }, data: { snapshot, pdfId: file.id } });
+  if (old) await tx.storedFile.delete({ where: { id: old } });
 }
 async function revokeCertificate(context, args) {
   const reason = str(args.reason, 500) || fail("Write why the certificate is revoked.");
@@ -5644,7 +5762,7 @@ async function confirmOutboundReceipt(context, args) {
 
 // features/keystone/domain/reads.ts
 var PUBLIC_LOT_STATUSES = ["scheduled", "open", "closed", "awarded", "completed"];
-var richText = (doc) => Array.isArray(doc) ? doc : [];
+var richText = (doc2) => Array.isArray(doc2) ? doc2 : [];
 async function storefrontSettings(context) {
   const s = await getSettings(context.prisma);
   return {
@@ -6336,7 +6454,7 @@ function parseBidSheet(rows, lot) {
   });
   return { lines, problems };
 }
-async function previewBidSheet(context, args) {
+async function checkBidSheet(context, args) {
   const { lot } = await lotForBuyerDownload(context, args.lotNumber);
   if (lot.bidBasis !== "per_line") fail("This lot is bid as a whole.");
   const decoded = decodeUpload(args.file);
@@ -6344,20 +6462,585 @@ async function previewBidSheet(context, args) {
   const { rows } = readWorkbook(decoded.bytes);
   const parsed = parseBidSheet(rows, lot);
   const byId = new Map(lot.lines.map((l) => [l.id, l]));
-  const preview = parsed.lines.map((l) => {
+  const checkedLines = parsed.lines.map((l) => {
     const line = byId.get(l.lotLineId);
     return { lotLineId: l.lotLineId, lineNumber: line.lineNumber, description: line.description, quantity: line.quantity, unitPriceMinor: l.unitPriceMinor, totalMinor: l.unitPriceMinor * line.quantity };
   });
-  return { lines: preview, problems: parsed.problems, totalMinor: preview.reduce((s, l) => s + l.totalMinor, 0) };
+  return { lines: checkedLines, problems: parsed.problems, totalMinor: checkedLines.reduce((s, l) => s + l.totalMinor, 0) };
 }
 async function placeBidFromSheet(context, args) {
   const { companyId, user } = await requireBuyer(context);
-  const preview = await previewBidSheet(context, args);
-  if (preview.problems.length) fail(preview.problems[0]);
-  if (!preview.lines.length) fail("The sheet has no prices.");
+  const checked = await checkBidSheet(context, args);
+  if (checked.problems.length) fail(checked.problems[0]);
+  if (!checked.lines.length) fail("The sheet has no prices.");
   const decoded = decodeUpload(args.file);
   const stored = await storeFile(context.prisma, { ...decoded, purpose: "bid_sheet", ownerBuyerCompanyId: companyId, uploadedById: user.id });
-  return placeBidCore(context, { lotNumber: args.lotNumber, lines: preview.lines.map((l) => ({ lotLineId: l.lotLineId, unitPriceMinor: l.unitPriceMinor })), idempotencyKey: args.idempotencyKey, companyId, userId: user.id, source: "bid_sheet", sheetFileId: stored.id });
+  return placeBidCore(context, { lotNumber: args.lotNumber, lines: checked.lines.map((l) => ({ lotLineId: l.lotLineId, unitPriceMinor: l.unitPriceMinor })), idempotencyKey: args.idempotencyKey, companyId, userId: user.id, source: "bid_sheet", sheetFileId: stored.id });
+}
+
+// features/keystone/domain/starterRecords.ts
+var import_node_crypto6 = require("node:crypto");
+var import_node_zlib = require("node:zlib");
+
+// features/keystone/domain/starterTimeline.ts
+var WORK_START = [8, 0];
+var WORK_END = [17, 30];
+function partsIn(t, timeZone) {
+  const f = new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const p = Object.fromEntries(f.formatToParts(new Date(t)).map((x) => [x.type, x.value]));
+  return { y: +p.year, m: +p.month, d: +p.day, hh: +p.hour, mm: +p.minute, ss: +p.second };
+}
+function localDay(t, timeZone) {
+  const p = partsIn(+t, timeZone);
+  return `${p.y}-${String(p.m).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`;
+}
+function zoned(day, hh, mm, timeZone) {
+  const [y, m2, d] = day.split("-").map(Number);
+  const guess = Date.UTC(y, m2 - 1, d, hh, mm);
+  const p = partsIn(guess, timeZone);
+  const offset = Date.UTC(p.y, p.m - 1, p.d, p.hh, p.mm, p.ss) - guess;
+  return new Date(guess - offset);
+}
+var weekday = (day) => (/* @__PURE__ */ new Date(`${day}T12:00:00Z`)).getUTCDay();
+var isBusinessDay = (day) => weekday(day) !== 0 && weekday(day) !== 6;
+var shiftDay = (day, n) => new Date(Date.parse(`${day}T12:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
+function storyClock(timeZone, now = /* @__PURE__ */ new Date()) {
+  let anchor = localDay(now, timeZone);
+  while (!isBusinessDay(anchor) || zoned(anchor, WORK_END[0], WORK_END[1], timeZone) > now) anchor = shiftDay(anchor, -1);
+  const businessDay = (n) => {
+    let day2 = anchor;
+    let left = Math.abs(n);
+    const step = n >= 0 ? -1 : 1;
+    while (left > 0) {
+      day2 = shiftDay(day2, step);
+      if (isBusinessDay(day2)) left--;
+    }
+    return day2;
+  };
+  const at = (n, hh, mm = 0) => zoned(businessDay(n), hh, mm, timeZone);
+  const day = (n) => {
+    if (n >= 0) return businessDay(n);
+    let d = localDay(now, timeZone);
+    let left = -n;
+    while (left > 0) {
+      d = shiftDay(d, 1);
+      if (isBusinessDay(d)) left--;
+    }
+    return d;
+  };
+  return { at, day, timeZone };
+}
+function workWindows(s, e, timeZone) {
+  const out = [];
+  for (let day = localDay(s, timeZone); day <= localDay(e, timeZone); day = shiftDay(day, 1)) {
+    if (!isBusinessDay(day)) continue;
+    const a = Math.max(s, +zoned(day, WORK_START[0], WORK_START[1], timeZone));
+    const b = Math.min(e, +zoned(day, WORK_END[0], WORK_END[1], timeZone));
+    if (b > a) out.push([a, b]);
+  }
+  return out.length ? out : [[s, e]];
+}
+var StarterTimeline = class {
+  constructor(since, timeZone) {
+    this.since = since;
+    this.timeZone = timeZone;
+    this.phases = [];
+  }
+  /** Everything written from now until the next mark happened between start and end. */
+  mark(start, end) {
+    this.phases.push({ at: Date.now(), start, end: end > start ? end : /* @__PURE__ */ new Date(+start + 6e4) });
+  }
+  pieces(until) {
+    const out = [];
+    const all = this.phases.map((p, i) => ({ ...p, from: i === 0 ? Math.min(+this.since, p.at) : p.at, to: this.phases[i + 1]?.at ?? until }));
+    for (const p of all) {
+      if (p.to <= p.from) continue;
+      const windows = workWindows(+p.start, +p.end, this.timeZone);
+      const total = windows.reduce((n, [a, b]) => n + (b - a), 0);
+      let used = 0;
+      for (const [a, b] of windows) {
+        const r0 = p.from + (p.to - p.from) * used / total;
+        used += b - a;
+        const r1 = p.from + (p.to - p.from) * used / total;
+        out.push({ r0, r1, s0: a, s1: b });
+      }
+    }
+    return out;
+  }
+};
+async function applyTimeline(prisma, timeline, until = Date.now()) {
+  const pieces = timeline.pieces(until);
+  if (!pieces.length) return 0;
+  const lo = Math.min(...pieces.map((p) => p.r0));
+  const hi = Math.max(...pieces.map((p) => p.r1));
+  const columns = await prisma.$queryRawUnsafe(
+    `SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = current_schema() AND data_type = 'timestamp without time zone' AND table_name NOT LIKE '\\_prisma%'`
+  );
+  let updated = 0;
+  for (const { table_name, column_name } of columns) {
+    const col = `"${column_name.replace(/"/g, "")}"`;
+    const ms = `(extract(epoch from ${col}) * 1000)`;
+    const cases = pieces.map((p) => {
+      const k = (p.s1 - p.s0) / Math.max(1, p.r1 - p.r0);
+      return `WHEN ${ms} >= ${p.r0.toFixed(3)} AND ${ms} < ${p.r1.toFixed(3)} THEN to_timestamp((${p.s0} + (${ms} - ${p.r0.toFixed(3)}) * ${k}) / 1000.0) AT TIME ZONE 'UTC'`;
+    });
+    const sql = `UPDATE "${table_name.replace(/"/g, "")}" SET ${col} = CASE ${cases.join(" ")} ELSE ${col} END WHERE ${ms} >= ${lo.toFixed(3)} AND ${ms} < ${hi.toFixed(3)}`;
+    updated += Number(await prisma.$executeRawUnsafe(sql));
+  }
+  return updated;
+}
+
+// features/keystone/domain/starterRecords.ts
+var doc = (text8) => [{ type: "paragraph", children: [{ text: text8 }] }];
+var slugify = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+var DAY = 864e5;
+var CRC_TABLE = Array.from({ length: 256 }, (_, n) => {
+  let c = n;
+  for (let k = 0; k < 8; k++) c = c & 1 ? 3988292384 ^ c >>> 1 : c >>> 1;
+  return c >>> 0;
+});
+function crc32(buf) {
+  let c = 4294967295;
+  for (const b of buf) c = CRC_TABLE[(c ^ b) & 255] ^ c >>> 8;
+  return (c ^ 4294967295) >>> 0;
+}
+function pngChunk(type, data) {
+  const len = Buffer.alloc(4);
+  len.writeUInt32BE(data.length);
+  const body = Buffer.concat([Buffer.from(type, "ascii"), data]);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(crc32(body));
+  return Buffer.concat([len, body, crc]);
+}
+function signaturePng(name) {
+  const w = 320, h = 96;
+  const seed = [...name].reduce((s, ch) => s + ch.charCodeAt(0), 0);
+  const px = Buffer.alloc((w + 1) * h, 255);
+  for (let r = 0; r < h; r++) px[r * (w + 1)] = 0;
+  const dot = (x, y) => {
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const xx = Math.round(x + dx), yy = Math.round(y + dy);
+      if (xx >= 0 && xx < w && yy >= 0 && yy < h) px[yy * (w + 1) + 1 + xx] = 30;
+    }
+  };
+  for (let t = 0; t < 1; t += 4e-4) {
+    const x = 20 + t * 270;
+    const y = 50 + Math.sin(t * (14 + seed % 7)) * 22 * (1 - t * 0.5) + Math.sin(t * 61 + seed) * 6;
+    dot(x, y);
+  }
+  for (let x = 30; x < 290; x += 0.5) dot(x, 82);
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0);
+  ihdr.writeUInt32BE(h, 4);
+  ihdr[8] = 8;
+  ihdr[9] = 0;
+  ihdr[10] = 0;
+  ihdr[11] = 0;
+  ihdr[12] = 0;
+  const png = Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), pngChunk("IHDR", ihdr), pngChunk("IDAT", (0, import_node_zlib.deflateSync)(px)), pngChunk("IEND", Buffer.alloc(0))]);
+  return { filename: `signature-${slugify(name)}.png`, mimeType: "image/png", base64: png.toString("base64") };
+}
+async function resaleCertificatePdf(company, state, number) {
+  const bytes = await renderPdf({
+    header: `${state} sales and use tax resale certificate`,
+    blocks: [
+      { kind: "title", text: "Resale certificate" },
+      { kind: "pairs", pairs: [["Purchaser", company], ["State", state], ["Permit number", number], ["Type of business", "Wholesale purchase of used IT equipment for resale"]] },
+      { kind: "text", text: "The purchaser certifies that the property purchased is for resale in the regular course of business." },
+      { kind: "signature", label: "Authorised signature" }
+    ]
+  });
+  return { filename: `resale-certificate-${state}.pdf`, mimeType: "application/pdf", base64: Buffer.from(bytes).toString("base64") };
+}
+var BUYERS = [
+  { key: "northgate", person: "Dana Ruiz", legalName: "Northgate Refurbishing LLC", tradingName: "Northgate Refurb", businessType: "refurbisher", band: "from_25k_to_100k", address: ["4410 Industrial Pkwy", "Columbus", "OH", "43228"], phone: "(614) 555-0142", website: "northgaterefurb.com", taxId: "82-4417730", state: "OH", permit: "98-213447", outcome: "approve", taxStatus: "exempt_resale" },
+  { key: "bluewater", person: "Marcus Feld", legalName: "Bluewater IT Asset Trading Inc.", tradingName: "Bluewater ITAD", businessType: "reseller", band: "over_100k", address: ["220 Harbor Point Blvd, Suite 300", "Cleveland", "OH", "44114"], phone: "(216) 555-0187", website: "bluewaterita.com", taxId: "47-1022815", state: "OH", permit: "98-551203", outcome: "approve", taxStatus: "taxable" },
+  { key: "copperline", person: "Aisha Okafor", legalName: "Copperline Electronics Recovery LLC", tradingName: "", businessType: "recycler", band: "from_5k_to_25k", address: ["1875 Rail Yard Rd", "Fort Wayne", "IN", "46803"], phone: "(260) 555-0119", website: "copperline-recovery.com", taxId: "35-2290614", state: "IN", permit: "0031874620", outcome: "submitted", taxStatus: "taxable" },
+  { key: "atlas", person: "Tom Brannigan", legalName: "Atlas Device Brokers LLC", tradingName: "Atlas Devices", businessType: "broker", band: "from_5k_to_25k", address: ["9 Commerce Sq", "Pittsburgh", "PA", "15222"], phone: "(412) 555-0164", website: "atlasdevices.com", taxId: "23-3318842", state: "PA", permit: "7240-1188", outcome: "request_info", taxStatus: "taxable" }
+];
+var CLIENTS = [
+  { key: "meridian", name: "Meridian Health Partners", legalName: "Meridian Health Partners, Inc.", industry: "Healthcare", person: "Laura Chen", phone: "(614) 555-0110", sites: [
+    { name: "Riverside main campus", addressLine1: "1200 Riverside Dr", city: "Columbus", region: "OH", postalCode: "43215", contactName: "Laura Chen", contactPhone: "(614) 555-0110", hasDock: true, needsLiftgate: false, accessNotes: "Loading dock B behind the parking garage. Check in with security.", hours: "Mon-Fri 7:00-15:00" },
+    { name: "Westside clinic", addressLine1: "3380 W Broad St", city: "Columbus", region: "OH", postalCode: "43204", contactName: "Ray Ortiz", contactPhone: "(614) 555-0133", hasDock: false, needsLiftgate: true, accessNotes: "Street-level entrance; equipment is in the basement storage room.", hours: "Mon-Fri 8:00-16:00" }
+  ] },
+  { key: "larkspur", name: "Larkspur Community Credit Union", legalName: "Larkspur Community Credit Union", industry: "Financial services", person: "Gary Whitfield", phone: "(937) 555-0176", sites: [
+    { name: "Operations centre", addressLine1: "75 Commerce Center Dr", city: "Dayton", region: "OH", postalCode: "45402", contactName: "Gary Whitfield", contactPhone: "(937) 555-0176", hasDock: true, needsLiftgate: false, accessNotes: "Server room equipment staged at the rear dock.", hours: "Mon-Fri 8:00-17:00" }
+  ] },
+  { key: "halvorsen", name: "Halvorsen Engineering Group", legalName: "Halvorsen Engineering Group LLC", industry: "Engineering", person: "Ingrid Halvorsen", phone: "(513) 555-0158", sites: [
+    { name: "Head office", addressLine1: "600 Vine St, Floor 12", city: "Cincinnati", region: "OH", postalCode: "45202", contactName: "Ingrid Halvorsen", contactPhone: "(513) 555-0158", hasDock: false, needsLiftgate: true, accessNotes: "Freight elevator booked through building management, 24 h notice.", hours: "Mon-Fri 9:00-17:00" }
+  ] }
+];
+var STAFF = [
+  { key: "driver", name: "Marcus Bell", role: "Driver" },
+  { key: "technician", name: "Priya Natarajan", role: "Technician" }
+];
+var JOB_ONE = [
+  { category: "Laptops", manufacturer: "Dell", model: "Latitude 5420", specs: { cpu: "Core i5-1145G7", ramGb: 16, storage: "256 GB NVMe SSD", screen: '14" FHD' }, weight: 3.4, count: 24, grades: [["A", "F1"], ["B", "F1"], ["B", "F1"], ["B", "F2"]], wipe: "purge", disposition: "resale" },
+  { category: "Desktops", manufacturer: "HP", model: "EliteDesk 800 G6 SFF", specs: { cpu: "Core i5-10500", ramGb: 16, storage: "512 GB SSD" }, weight: 11.8, count: 12, grades: [["B", "F1"], ["A", "F1"]], wipe: "purge", disposition: "resale" },
+  { category: "Monitors", manufacturer: "Dell", model: "P2419H", specs: { size: '24"', resolution: "1920x1080" }, weight: 11.2, count: 10, grades: [["B", "F1"], ["C", "F1"]], wipe: "none", disposition: "resale" },
+  { category: "Laptops", manufacturer: "Lenovo", model: "ThinkPad T480", specs: { cpu: "Core i5-8350U", ramGb: 8, storage: "256 GB SSD" }, weight: 3.6, count: 6, grades: [["D", "F4"]], wipe: "shred", disposition: "recycle" },
+  { category: "Hard drives", manufacturer: "Seagate", model: "Exos 7E8 2TB", partNumber: "ST2000NM0055", specs: { capacity: "2 TB", interface: "SATA 6Gb/s" }, weight: 1.4, count: 8, grades: [["C", "F3"]], wipe: "shred_after_fail", failed: 2, disposition: "recycle" },
+  { category: "Mobile phones", manufacturer: "Apple", model: "iPhone 11", specs: { storage: "64 GB", carrier: "Unlocked" }, weight: 0.4, count: 10, grades: [["B", "F1"], ["A", "F1"], ["C", "F2"]], wipe: "purge", disposition: "resale" }
+];
+var JOB_TWO = [
+  { category: "Desktops", manufacturer: "Dell", model: "OptiPlex 7090 Micro", specs: { cpu: "Core i5-10500T", ramGb: 16, storage: "256 GB SSD" }, weight: 2.9, count: 20, grades: [["B", "F1"], ["A", "F1"]], wipe: "purge", pending: 6, disposition: "resale" },
+  { category: "Servers", manufacturer: "Dell", model: "PowerEdge R640", specs: { cpu: "2x Xeon Silver 4214", ramGb: 192, storage: "4x 1.2 TB SAS" }, weight: 37.5, count: 6, grades: [["B", "F1"]], wipe: "purge", pending: 2, disposition: "undecided" },
+  { category: "Networking", manufacturer: "Cisco", model: "Catalyst 2960X-48FPD-L", partNumber: "WS-C2960X-48FPD-L", specs: { ports: "48x 1G PoE+, 2x 10G SFP+" }, weight: 11.9, count: 8, grades: [["B", "F1"]], wipe: "clear", disposition: "undecided" },
+  { category: "Laptops", manufacturer: "Lenovo", model: "ThinkPad T14 Gen 2", specs: { cpu: "Core i5-1135G7", ramGb: 16, storage: "512 GB SSD" }, weight: 3.3, count: 16, grades: [["B", "F1"], ["C", "F2"]], wipe: "purge", pending: 3, failed: 1, disposition: "undecided" }
+];
+var SERIAL_PREFIX = { Dell: "", HP: "MXL", Lenovo: "PF", Seagate: "ZC", Apple: "F2L", Cisco: "FOC" };
+function serialFor(manufacturer) {
+  const alphabet = "BCDFGHJKLMNPQRSTVWXYZ0123456789";
+  const bytes = (0, import_node_crypto6.randomBytes)(10);
+  const body = [...bytes].map((b) => alphabet[b % alphabet.length]).join("");
+  return manufacturer === "Dell" ? body.slice(0, 7) : `${SERIAL_PREFIX[manufacturer] ?? ""}${body.slice(0, 8)}`;
+}
+var BUYER_STORY = {
+  northgate: { apply: [14, 10], review: [13, 9] },
+  bluewater: { apply: [13, 14], review: [12, 10] },
+  copperline: { apply: [2, 15], review: [2, 16] },
+  atlas: { apply: [6, 11], review: [5, 10] }
+};
+async function seedStarterRecords(context, options2) {
+  const base = context;
+  if (typeof base.withSession !== "function") fail("Starter records need a signed-in session.");
+  const prisma = context.prisma;
+  const ownerId = context.session.itemId;
+  const settings = await getSettings(prisma);
+  const mailbox = String(options2.supportEmail || settings.supportEmail || "").toLowerCase();
+  const [local, domain] = mailbox.includes("@") ? mailbox.split("@") : ["accounts", `${slugify(options2.businessName) || "recycler"}.local`];
+  const emailFor = (tag) => `${local}+${tag}@${domain}`;
+  const already = await prisma.user.findUnique({ where: { email: emailFor("northgate") }, select: { id: true } });
+  if (already) {
+    const logins2 = [
+      ...BUYERS.map((b) => ({ portal: "buyer", name: b.person, email: emailFor(b.key), organisation: b.legalName })),
+      ...CLIENTS.map((c) => ({ portal: "client", name: c.person, email: emailFor(c.key), organisation: c.name })),
+      ...STAFF.map((s) => ({ portal: "staff", name: s.name, email: emailFor(s.key), organisation: options2.businessName, role: s.role }))
+    ];
+    return { skipped: true, logins: logins2, records: { note: "Starter records already exist. Passwords were shown when they were created; reset them from Team or the sign-in page." } };
+  }
+  const tz = settings.timezone || "UTC";
+  const story = storyClock(tz);
+  const timeline = new StarterTimeline(options2.since ?? /* @__PURE__ */ new Date(), tz);
+  const phase = async (from, to) => {
+    await new Promise((r) => setTimeout(r, 40));
+    timeline.mark(story.at(from[0], from[1], from[2] ?? 0), story.at(to[0], to[1], to[2] ?? 0));
+    await new Promise((r) => setTimeout(r, 40));
+  };
+  await phase([16, 9], [16, 11]);
+  const password2 = options2.password && options2.password.length >= 10 ? options2.password : `${(0, import_node_crypto6.randomBytes)(9).toString("base64url")}-Rc1`;
+  const logins = [];
+  const records = {};
+  const sessionFor = async (userId) => {
+    const u = await prisma.user.findUnique({ where: { id: userId }, include: { role: true, buyerCompany: { select: { id: true, status: true } }, clientOrganization: { select: { id: true, status: true } } } });
+    return base.withSession({ itemId: u.id, listKey: "User", data: { name: u.name, email: u.email, kind: u.kind, isActive: u.isActive, buyerRole: u.buyerRole, clientRole: u.clientRole, onboardingStatus: u.onboardingStatus, buyerCompany: u.buyerCompany, clientOrganization: u.clientOrganization, role: u.role } });
+  };
+  const owner = await sessionFor(ownerId);
+  const sudo = base.sudo();
+  const staff = {};
+  for (const s of STAFF) {
+    const role = await prisma.role.findFirst({ where: { name: s.role } });
+    if (!role) fail(`The ${s.role} role is missing; run onboarding first.`);
+    const user = await sudo.db.User.createOne({ data: { name: s.name, email: emailFor(s.key), password: password2, kind: "staff", role: { connect: { id: role.id } } } });
+    staff[s.key] = { id: user.id, name: s.name, email: emailFor(s.key) };
+    logins.push({ portal: "staff", name: s.name, email: emailFor(s.key), organisation: options2.businessName, role: s.role });
+  }
+  const technician = await sessionFor(staff.technician.id);
+  const driver = await sessionFor(staff.driver.id);
+  const grades = new Map((await prisma.gradeDefinition.findMany()).map((g) => [`${g.kind}:${g.code}`, g.id]));
+  const categories = new Map((await prisma.materialCategory.findMany()).map((c) => [c.name, c.id]));
+  const cat = (name) => categories.get(name) ?? null;
+  const buyerUsers = {};
+  for (const b of BUYERS) {
+    const email = emailFor(b.key);
+    const plan = BUYER_STORY[b.key];
+    await phase([plan.apply[0], plan.apply[1]], [plan.apply[0], plan.apply[1] + 1]);
+    const reg = await registerBuyer(base, { name: b.person, email, password: password2, phone: b.phone, legalName: b.legalName, countryCode: "US" });
+    const asBuyer = await sessionFor(reg.userId);
+    await saveBuyerApplication(asBuyer, {
+      tradingName: b.tradingName,
+      addressLine1: b.address[0],
+      city: b.address[1],
+      region: b.address[2],
+      postalCode: b.address[3],
+      countryCode: "US",
+      phone: b.phone,
+      website: b.website,
+      taxId: b.taxId,
+      businessType: b.businessType,
+      monthlySpendBand: b.band,
+      destinationCountries: ["US", "CA"],
+      categoryIds: [cat("Laptops"), cat("Desktops"), cat("Servers"), cat("Networking")].filter(Boolean)
+    });
+    await uploadBuyerDocument(asBuyer, { type: "resale_certificate", file: await resaleCertificatePdf(b.legalName, b.state, b.permit), state: b.state, expiresOn: new Date(Date.now() + 700 * DAY).toISOString().slice(0, 10) });
+    await submitBuyerApplication(asBuyer, { acceptTermsVersion: settings.wholesaleTermsVersion });
+    await phase([plan.review[0], plan.review[1]], [plan.review[0], plan.review[1] + 1]);
+    if (b.outcome === "approve") {
+      await reviewBuyerApplication(owner, { companyId: reg.companyId, action: "open" });
+      const docs = await prisma.buyerDocument.findMany({ where: { companyId: reg.companyId } });
+      for (const d of docs) await reviewBuyerDocument(owner, { documentId: d.id, status: "accepted", note: "Permit number checked with the state register." });
+      await reviewBuyerApplication(owner, { companyId: reg.companyId, action: "approve", taxStatus: b.taxStatus, spendLimitMinor: b.key === "northgate" ? 25e6 : null, message: `Welcome aboard. ${b.legalName} is approved to bid on every open lot.` });
+    } else if (b.outcome === "request_info") {
+      await reviewBuyerApplication(owner, { companyId: reg.companyId, action: "open" });
+      await reviewBuyerApplication(owner, { companyId: reg.companyId, action: "request_info", message: "The resale certificate you uploaded has expired on the state register. Please upload your current Pennsylvania certificate (REV-1220) so we can finish the review." });
+    }
+    buyerUsers[b.key] = { userId: reg.userId, companyId: reg.companyId };
+    const status2 = (await prisma.buyerCompany.findUnique({ where: { id: reg.companyId }, select: { status: true } })).status;
+    logins.push({ portal: "buyer", name: b.person, email, organisation: b.legalName, status: status2 });
+  }
+  records.buyers = BUYERS.map((b) => b.legalName);
+  await phase([15, 13], [15, 16]);
+  const orgs = {};
+  for (const c of CLIENTS) {
+    const site0 = c.sites[0];
+    const org = await sudo.db.ClientOrganization.createOne({ data: { name: c.name, legalName: c.legalName, industry: c.industry, billingEmail: emailFor(`${c.key}-ap`), addressLine1: site0.addressLine1, city: site0.city, region: site0.region, postalCode: site0.postalCode, countryCode: "US", status: "active", defaultPricingModel: c.key === "meridian" ? "revenue_share" : "fee_for_service", accountManager: { connect: { id: ownerId } } } });
+    const siteIds = [];
+    for (const s of c.sites) siteIds.push((await sudo.db.ClientSite.createOne({ data: { ...s, countryCode: "US", organization: { connect: { id: org.id } } } })).id);
+    const user = await sudo.db.User.createOne({ data: { name: c.person, email: emailFor(c.key), password: password2, phone: c.phone, kind: "client", clientRole: "admin", clientOrganization: { connect: { id: org.id } } } });
+    orgs[c.key] = { id: org.id, userId: user.id, siteIds };
+    logins.push({ portal: "client", name: c.person, email: emailFor(c.key), organisation: c.name });
+  }
+  const today = /* @__PURE__ */ new Date();
+  const siteOf = (key2, i = 0) => {
+    const s = CLIENTS.find((c) => c.key === key2).sites[i];
+    return { addressLine1: s.addressLine1, city: s.city, region: s.region, postalCode: s.postalCode, countryCode: "US", hasDock: s.hasDock, needsLiftgate: s.needsLiftgate, accessNotes: s.accessNotes, hours: s.hours };
+  };
+  const newJob = async (key2, siteIndex, notes, estimate, requestedDates) => {
+    const c = CLIENTS.find((x) => x.key === key2);
+    const out = await requestJob(owner, { organizationId: orgs[key2].id, siteId: orgs[key2].siteIds[siteIndex], contactName: c.sites[siteIndex].contactName, contactEmail: emailFor(key2), contactPhone: c.sites[siteIndex].contactPhone, site: siteOf(key2, siteIndex), requestedDates, hasDataBearing: true, services: ["pickup", "data_destruction", "itad"], estimate: estimate.map(([category, quantity, unit]) => ({ categoryId: cat(category), quantity, unit })), notes });
+    return out.jobId;
+  };
+  const acceptAs = async (key2, jobId) => {
+    const job = await prisma.job.findUnique({ where: { id: jobId } });
+    const c = CLIENTS.find((x) => x.key === key2);
+    await acceptJobQuote(await sessionFor(orgs[key2].userId), { jobNumber: job.jobNumber, signatureName: c.person, termsVersion: settings.serviceTermsVersion });
+  };
+  const collect = async (jobId, key2, containers, bookedOn, scheduledOn) => {
+    await phase([bookedOn, 15], [bookedOn, 15, 30]);
+    await scheduleJob(owner, { jobId, date: story.day(scheduledOn), windowStart: "08:00", windowEnd: "10:00", driverId: staff.driver.id, vehicle: "Box truck 2 (26 ft, liftgate)" });
+    await phase([scheduledOn, 8, 5], [scheduledOn, 8, 20]);
+    await startJobRoute(driver, { jobId });
+    await phase([scheduledOn, 9, 10], [scheduledOn, 9, 50]);
+    const signer = CLIENTS.find((x) => x.key === key2).sites[0].contactName;
+    const { jobNumber } = await prisma.job.findUnique({ where: { id: jobId }, select: { jobNumber: true } });
+    containers = containers.map((c) => ({ ...c, label: `${jobNumber}-${c.label}` }));
+    await collectJob(driver, { jobId, containers, signerName: signer, signature: signaturePng(signer), notes: "Loaded and shrink-wrapped on site." });
+    const rows = await prisma.container.findMany({ where: { jobId }, orderBy: { label: "asc" } });
+    await phase([scheduledOn, 13, 15], [scheduledOn, 14, 30]);
+    for (const r of rows) {
+      const plan = containers.find((c) => c.label === r.label);
+      await receiveContainer(owner, { containerId: r.id, receivedSealNumber: plan.sealNumber, grossWeight: plan.grossWeight, tareWeight: plan.type === "gaylord" ? 48 : 42, locationCode: `IN-${r.label.slice(-2)}` });
+    }
+    return rows.map((r) => r.id);
+  };
+  const auditPlans = async (jobId, containerIds, plans) => {
+    const created = [];
+    let n = 0;
+    for (const plan of plans) {
+      for (let i = 0; i < plan.count; i++) {
+        const [cos, fn] = plan.grades[i % plan.grades.length];
+        const asset = await auditAsset(technician, {
+          jobId,
+          containerId: containerIds[n++ % containerIds.length],
+          categoryId: cat(plan.category),
+          manufacturer: plan.manufacturer,
+          model: plan.model,
+          partNumber: plan.partNumber ?? "",
+          serialNumber: serialFor(plan.manufacturer),
+          clientAssetTag: plan.category === "Hard drives" ? "" : `MHP-${String(10400 + n).padStart(6, "0")}`,
+          specs: plan.specs,
+          isDataBearing: plan.wipe !== "none",
+          cosmeticGradeId: grades.get(`cosmetic:${cos}`) ?? null,
+          functionalGradeId: grades.get(`functional:${fn}`) ?? null,
+          testNotes: fn === "F1" ? "Powers on, passes diagnostics." : fn === "F2" ? "Battery health under 70%." : fn === "F4" ? "No POST; board fault." : "Spins up; SMART not read.",
+          weight: plan.weight,
+          locationCode: `AUD-${n % 4 + 1}`
+        });
+        created.push({ id: asset.id, plan, index: i });
+      }
+    }
+    return created;
+  };
+  const wipe = async (assets, reportDay) => {
+    const done = (a) => a.index >= (a.plan.pending ?? 0) + (a.plan.wipe === "purge" ? a.plan.failed ?? 0 : 0);
+    const byWipe = (w) => assets.filter((a) => a.plan.wipe === w);
+    const purge = byWipe("purge");
+    const passedPurge = purge.filter(done).map((a) => a.id);
+    const failedPurge = purge.filter((a) => a.index >= (a.plan.pending ?? 0) && a.index < (a.plan.pending ?? 0) + (a.plan.failed ?? 0)).map((a) => a.id);
+    const reportReference = `BDE-${reportDay.replace(/-/g, "")}-${(0, import_node_crypto6.randomBytes)(2).toString("hex").toUpperCase()}`;
+    if (passedPurge.length) await recordSanitization(technician, { assetIds: passedPurge, method: "purge", technique: "crypto_erase", standard: "NIST SP 800-88 Rev. 1", tool: "Blancco Drive Eraser", toolVersion: "7.11", reportReference, result: "passed" });
+    if (failedPurge.length) await recordSanitization(technician, { assetIds: failedPurge, method: "purge", technique: "crypto_erase", standard: "NIST SP 800-88 Rev. 1", tool: "Blancco Drive Eraser", toolVersion: "7.11", reportReference, result: "failed", failureReason: "Drive reported a frozen security state; erase did not complete." });
+    const clear = byWipe("clear").map((a) => a.id);
+    if (clear.length) await recordSanitization(technician, { assetIds: clear, method: "clear", technique: "overwrite", standard: "NIST SP 800-88 Rev. 1", tool: "Factory reset and NVRAM erase", reportReference, result: "passed" });
+    const shred = byWipe("shred").map((a) => a.id);
+    if (shred.length) await recordSanitization(technician, { assetIds: shred, method: "destroy", technique: "shred", standard: "NIST SP 800-88 Rev. 1", tool: "SSI Q55 shredder", reportReference, result: "passed", witnessName: "Laura Chen" });
+    const retry = byWipe("shred_after_fail");
+    const firstFails = retry.filter((a) => a.index < (a.plan.failed ?? 0)).map((a) => a.id);
+    if (firstFails.length) await recordSanitization(technician, { assetIds: firstFails, method: "clear", technique: "overwrite", standard: "NIST SP 800-88 Rev. 1", tool: "WipeDrive", toolVersion: "9.2", reportReference, result: "failed", failureReason: "Bad sectors; overwrite stopped at 61%." });
+    if (retry.length) await recordSanitization(technician, { assetIds: retry.map((a) => a.id), method: "destroy", technique: "shred", standard: "NIST SP 800-88 Rev. 1", tool: "SSI Q55 shredder", reportReference, result: "passed", witnessName: "Laura Chen" });
+    const toVerify = await prisma.sanitizationRecord.findMany({ where: { assetId: { in: assets.map((a) => a.id) }, result: "passed" }, orderBy: { createdAt: "asc" }, take: 6 });
+    for (const r of toVerify) await verifySanitization(owner, { recordId: r.id, confirmed: true, note: "Spot check: drive reads as blank." });
+  };
+  await phase([15, 9, 10], [15, 9, 25]);
+  const job1 = await newJob("meridian", 0, "Annual refresh from the Riverside campus. Two pallets of laptops and desktops, one gaylord of loose drives and phones.", [["Laptops", 30, "units"], ["Desktops", 12, "units"], ["Monitors", 10, "units"], ["Hard drives", 8, "units"], ["Mobile phones", 10, "units"]], [story.day(11), story.day(10)]);
+  await phase([15, 14], [15, 14, 20]);
+  await quoteJob(owner, { jobId: job1, pricingModel: "revenue_share", revenueShareBps: 7e3, lines: [{ description: "Collection, Columbus metro", quantity: 1, unitPriceMinor: 0, kind: "pickup" }, { description: "Serial-level audit and grading", quantity: 70, unitPriceMinor: 0, kind: "audit" }, { description: "Drive shredding with certificate", quantity: 8, unitPriceMinor: 500, kind: "shred" }] });
+  await phase([14, 10, 40], [14, 10, 50]);
+  await acceptAs("meridian", job1);
+  const c1 = await collect(job1, "meridian", [
+    { label: "MHP-P01", type: "pallet", sealNumber: "S-448120", itemCountDeclared: 30, grossWeight: 214 },
+    { label: "MHP-P02", type: "pallet", sealNumber: "S-448121", itemCountDeclared: 22, grossWeight: 362 },
+    { label: "MHP-G01", type: "gaylord", sealNumber: "S-448122", itemCountDeclared: 18, grossWeight: 71 }
+  ], 13, 11);
+  await phase([10, 8, 30], [8, 16]);
+  const assets1 = await auditPlans(job1, c1, JOB_ONE);
+  await phase([8, 9], [7, 15]);
+  await wipe(assets1, story.day(8));
+  await phase([6, 10], [6, 11]);
+  for (const disposition of ["resale", "recycle"]) {
+    const ids = assets1.filter((a) => a.plan.disposition === disposition && !(a.plan.grades[a.index % a.plan.grades.length][1] === "F4" && disposition === "resale")).map((a) => a.id);
+    if (ids.length) await setAssetDisposition(owner, { assetIds: ids, disposition });
+  }
+  await phase([5, 14], [5, 14, 30]);
+  const cert1 = await issueCertificate(owner, { jobId: job1, type: "data_destruction" });
+  const cert2 = await issueCertificate(owner, { jobId: job1, type: "recycling" });
+  await phase([5, 15], [5, 15, 10]);
+  await completeJob(owner, { jobId: job1 });
+  await phase([9, 11], [9, 11, 15]);
+  const job2 = await newJob("larkspur", 0, "Branch desktop refresh and the old server rack from the operations centre.", [["Desktops", 20, "units"], ["Servers", 6, "units"], ["Networking", 8, "units"], ["Laptops", 16, "units"]], [story.day(6), story.day(5)]);
+  await phase([9, 15], [9, 15, 20]);
+  await quoteJob(owner, { jobId: job2, pricingModel: "fee_for_service", lines: [{ description: "Collection, Dayton", quantity: 1, unitPriceMinor: 17500, kind: "pickup" }, { description: "Serial-level audit", quantity: 50, unitPriceMinor: 400, kind: "audit" }, { description: "On-site witnessed wipe, per drive", quantity: 50, unitPriceMinor: 800, kind: "wipe" }] });
+  await phase([8, 9, 30], [8, 9, 40]);
+  await acceptAs("larkspur", job2);
+  const c2 = await collect(job2, "larkspur", [
+    { label: "LCU-G01", type: "gaylord", sealNumber: "S-448210", itemCountDeclared: 28, grossWeight: 186 },
+    { label: "LCU-P01", type: "pallet", sealNumber: "S-448211", itemCountDeclared: 22, grossWeight: 412 }
+  ], 8, 6);
+  await phase([5, 8, 30], [3, 16]);
+  const assets2 = await auditPlans(job2, c2, JOB_TWO);
+  await phase([2, 9], [1, 15]);
+  await wipe(assets2, story.day(2));
+  await phase([1, 15, 30], [1, 15, 45]);
+  const readyOptiplex = assets2.filter((a) => a.plan.model.startsWith("OptiPlex") && a.index >= (a.plan.pending ?? 0)).map((a) => a.id);
+  if (readyOptiplex.length) await setAssetDisposition(owner, { assetIds: readyOptiplex, disposition: "resale" });
+  await phase([4, 10], [4, 10, 10]);
+  const job3 = await newJob("halvorsen", 0, "Office move: workstations and monitors from floor 12.", [["Desktops", 25, "units"], ["Monitors", 30, "units"]], [story.day(-2), story.day(-3)]);
+  await phase([4, 16], [4, 16, 15]);
+  await quoteJob(owner, { jobId: job3, pricingModel: "fee_for_service", lines: [{ description: "Collection, Cincinnati CBD (freight elevator)", quantity: 1, unitPriceMinor: 22500, kind: "pickup" }, { description: "Hard drive shredding", quantity: 25, unitPriceMinor: 500, kind: "shred" }, { description: "Monitor recycling fee", quantity: 30, unitPriceMinor: 500, kind: "recycling_fee" }] });
+  await phase([3, 11], [3, 11, 10]);
+  await acceptAs("halvorsen", job3);
+  await phase([2, 10], [2, 10, 10]);
+  await scheduleJob(owner, { jobId: job3, date: story.day(-2), windowStart: "09:00", windowEnd: "11:00", driverId: staff.driver.id, vehicle: "Box truck 1 (20 ft, liftgate)" });
+  await phase([1, 9, 30], [1, 9, 40]);
+  const job4 = await newJob("meridian", 1, "Clinic workstation swap. Client wants a quote before the budget meeting.", [["Laptops", 14, "units"], ["Printers", 3, "units"]], [story.day(-5), story.day(-6)]);
+  await phase([0, 11], [0, 11, 20]);
+  await quoteJob(owner, { jobId: job4, pricingModel: "revenue_share", revenueShareBps: 7e3, lines: [{ description: "Collection, liftgate required", quantity: 1, unitPriceMinor: 9500, kind: "pickup" }, { description: "Printer recycling fee", quantity: 3, unitPriceMinor: 1500, kind: "recycling_fee" }] });
+  const jobNumbers = await prisma.job.findMany({ where: { id: { in: [job1, job2, job3, job4] } }, select: { id: true, jobNumber: true, status: true } });
+  records.jobs = [job1, job2, job3, job4].map((id) => jobNumbers.find((j) => j.id === id)).map((j) => ({ jobNumber: j.jobNumber, status: j.status }));
+  records.certificates = [cert1.certificateNumber, cert2.certificateNumber];
+  records.assets = await prisma.asset.count({ where: { jobId: { in: [job1, job2] } } });
+  const vendors = [
+    { name: "Great Lakes Metals Recovery", addressLine1: "3100 Ship Canal Rd", city: "Toledo", region: "OH", postalCode: "43611", contactName: "Jim Kowalczyk", contactEmail: "compliance@greatlakesmetals.com", certifications: [{ name: "R2v3", number: "R2-24-11873", expiresOn: "2027-09-30" }, { name: "ISO 14001", number: "EMS-558120", expiresOn: "2027-03-31" }], categories: ["Circuit boards", "Cables and wire", "Mixed e-scrap", "Hard drives"], notes: "Shredded drive fragments and boards. Smelter downstream: Aurubis Hamburg." },
+    { name: "Ridgeway Battery Solutions", addressLine1: "88 Furnace Run", city: "Ellwood City", region: "PA", postalCode: "16117", contactName: "Sandra Pike", contactEmail: "receiving@ridgewaybattery.com", certifications: [{ name: "R2v3", number: "R2-23-10442", expiresOn: "2026-12-31" }, { name: "e-Stewards", number: "ES-1187", expiresOn: "2027-05-31" }], categories: ["Batteries", "CRT"], notes: "Lithium-ion and lead-acid. Ship in UN-rated drums only." }
+  ];
+  await phase([16, 14], [16, 15]);
+  for (const v of vendors) {
+    const { categories: names, ...data } = v;
+    await sudo.db.DownstreamVendor.createOne({ data: { ...data, countryCode: "US", status: "approved", approvedOn: new Date(today.getTime() - 120 * DAY).toISOString().slice(0, 10), reviewDueOn: new Date(today.getTime() + 245 * DAY).toISOString().slice(0, 10), approvedCategories: { connect: names.map(cat).filter(Boolean).map((id) => ({ id })) } } });
+  }
+  records.downstreamVendors = vendors.map((v) => v.name);
+  await phase([5, 15, 30], [5, 17]);
+  const facility = await prisma.facility.findFirst({ orderBy: { createdAt: "asc" } });
+  const eventCloses = new Date(today.getTime() + 5 * DAY);
+  eventCloses.setUTCHours(19, 0, 0, 0);
+  const event = await prisma.saleEvent.create({ data: { title: `${today.toLocaleString("en-US", { month: "long", timeZone: "UTC" })} enterprise IT sale`, slug: `enterprise-it-sale-${today.toISOString().slice(0, 10)}-${(0, import_node_crypto6.randomBytes)(2).toString("hex")}`, description: "Off-lease laptops, desktops and data-centre equipment from healthcare and finance clients. Every data-bearing device is wiped to NIST 800-88 or destroyed, with serial-level manifests.", opensAt: story.at(4, 9), closesAt: eventCloses, status: "draft" } });
+  const closeAt = (days, hour = 19) => {
+    const d = new Date(today.getTime() + days * DAY);
+    d.setUTCHours(hour, 0, 0, 0);
+    return d;
+  };
+  const lotData = (title, fields) => ({ title, slug: slugify(title), saleEventId: event.id, facilityId: facility?.id ?? null, status: "draft", awardMode: "manual", shippingTerms: "buyer_arranged", exportAllowed: true, ...fields });
+  const manualLot = async (title, fields, lines) => {
+    return prisma.lot.create({ data: { lotNumber: await nextNumber(prisma, "lot"), ...lotData(title, fields), lines: { create: lines.map((l, i) => ({ lineNumber: i + 1, categoryId: cat(l.category), manufacturer: l.manufacturer, model: l.model, partNumber: "", description: l.description, specs: l.specs ?? {}, cosmeticGrade: l.cosmeticGrade, functionalGrade: l.functionalGrade, quantity: l.quantity, unit: "each", serials: [], notes: "", extra: {} })) } }, include: { lines: { orderBy: { lineNumber: "asc" } } } });
+  };
+  const forLot = assets1.filter((a) => ["Latitude 5420", "EliteDesk 800 G6 SFF"].includes(a.plan.model)).map((a) => a.id);
+  const lot1Draft = await createLotFromAssets(owner, { assetIds: forLot, title: "Dell Latitude 5420 and HP EliteDesk 800 G6, 36 units, wiped", saleEventId: event.id, facilityId: facility?.id ?? null, format: "sealed_bid", bidBasis: "lot_total" });
+  await prisma.lot.update({ where: { id: lot1Draft.id }, data: { slug: slugify(lot1Draft.title), closesAt: closeAt(4), reserveMinor: 9e5, palletCount: 2, dimensions: "2 pallets, 48x40x52 in", conditionSummary: "Mostly grade B, fully working. Batteries 80%+ on the Latitudes. Crypto-erased (NIST 800-88 purge), no OS installed.", description: doc("Off-lease fleet from a healthcare client, audited serial by serial. Chargers included for the laptops; no power cords for the desktops. Asset tags removed."), warrantyDays: 30 } });
+  const lot2 = await manualLot("Data-centre refresh: Dell R740, Cisco 9300 and HPE DL360", { format: "sealed_bid", bidBasis: "per_line", closesAt: closeAt(4, 20), reserveMinor: null, palletCount: 6, conditionSummary: "Servers have no drives (shredded on site). Switches factory reset.", description: doc("Decommissioned from a regional bank data centre. Rails and bezels included where noted on the manifest. Bid per line: each line can be awarded to a different buyer.") }, [
+    { category: "Servers", manufacturer: "Dell", model: "PowerEdge R740", description: "Dell PowerEdge R740, 2x Xeon Gold 6130, 256 GB, no drives, rails", quantity: 18, cosmeticGrade: "Grade A", functionalGrade: "Fully working", specs: { cpu: "2x Xeon Gold 6130", ramGb: 256 } },
+    { category: "Networking", manufacturer: "Cisco", model: "Catalyst 9300-48P", description: "Cisco Catalyst 9300-48P-A, PoE+, dual PSU, no network module", quantity: 24, cosmeticGrade: "Grade B", functionalGrade: "Fully working" },
+    { category: "Servers", manufacturer: "HPE", model: "ProLiant DL360 Gen10", description: "HPE ProLiant DL360 Gen10, 2x Xeon Silver 4110, 64 GB, no drives", quantity: 40, cosmeticGrade: "Grade B", functionalGrade: "Powers on, untested", specs: { cpu: "2x Xeon Silver 4110", ramGb: 64 } }
+  ]);
+  const lot3 = await manualLot('Apple MacBook Pro 13" M1 (2020), 60 units, unlocked', { format: "open_auction", bidBasis: "lot_total", openingBidMinor: 15e5, bidIncrementMinor: 25e3, reserveMinor: 17e5, closesAt: closeAt(3, 21), palletCount: 1, conditionSummary: "Activation lock and MDM removed. Erased with Apple Configurator.", description: doc("Returned from a corporate lease. Every unit checked for activation lock and MDM enrolment before listing. Chargers not included.") }, [
+    { category: "Laptops", manufacturer: "Apple", model: 'MacBook Pro 13" M1 2020', description: 'MacBook Pro 13" M1, 8 GB, 256 GB, Space Grey', quantity: 36, cosmeticGrade: "Grade B", functionalGrade: "Fully working", specs: { cpu: "Apple M1", ramGb: 8, storage: "256 GB" } },
+    { category: "Laptops", manufacturer: "Apple", model: 'MacBook Pro 13" M1 2020', description: 'MacBook Pro 13" M1, 8 GB, 256 GB, heavy wear on lids', quantity: 24, cosmeticGrade: "Grade C", functionalGrade: "Fully working", specs: { cpu: "Apple M1", ramGb: 8, storage: "256 GB" } }
+  ]);
+  const lot4 = await manualLot('Dell P2422H 24" monitors, 80 units, with stands', { format: "fixed_price", bidBasis: "lot_total", fixedPriceMinor: 36e4, closesAt: closeAt(5), palletCount: 2, conditionSummary: "Grade A/B, tested at 1080p. Stands included; no cables.", description: doc("Bought together as a whole lot at the listed price. First buyer to confirm gets it.") }, [
+    { category: "Monitors", manufacturer: "Dell", model: "P2422H", description: 'Dell P2422H 23.8" IPS, height-adjustable stand', quantity: 80, cosmeticGrade: "Grade B", functionalGrade: "Fully working" }
+  ]);
+  const lot5 = await manualLot("Lenovo ThinkCentre M720q Tiny, 120 units, wiped", { format: "sealed_bid", bidBasis: "lot_total", reserveMinor: 1e6, closesAt: closeAt(2), palletCount: 2, conditionSummary: "i5-8500T, 8 GB, 256 GB SSD. Crypto-erased. VESA mounts on about half.", description: doc("Branch office desktops from a credit union refresh.") }, [
+    { category: "Desktops", manufacturer: "Lenovo", model: "ThinkCentre M720q", description: "Lenovo ThinkCentre M720q Tiny, i5-8500T, 8 GB, 256 GB SSD", quantity: 96, cosmeticGrade: "Grade B", functionalGrade: "Fully working" },
+    { category: "Desktops", manufacturer: "Lenovo", model: "ThinkCentre M720q", description: "Lenovo ThinkCentre M720q Tiny, i5-8500T, 8 GB, no SSD", quantity: 24, cosmeticGrade: "Grade C", functionalGrade: "Working with faults" }
+  ]);
+  const lot6 = await manualLot("Enterprise SSDs 960 GB-1.92 TB, 400 units, NIST purged", { format: "sealed_bid", bidBasis: "lot_total", reserveMinor: 12e5, closesAt: closeAt(2, 18), palletCount: 1, conditionSummary: "Each drive crypto-erased and verified; erasure report by serial on the manifest.", description: doc("Samsung PM883 and Intel S4510 SATA SSDs pulled from storage arrays. Health 90%+ by SMART.") }, [
+    { category: "Solid state drives", manufacturer: "Samsung", model: "PM883 1.92TB", description: "Samsung PM883 1.92 TB SATA SSD, health 90%+", quantity: 220, cosmeticGrade: "Grade A", functionalGrade: "Fully working" },
+    { category: "Solid state drives", manufacturer: "Intel", model: "D3-S4510 960GB", description: "Intel D3-S4510 960 GB SATA SSD, health 90%+", quantity: 180, cosmeticGrade: "Grade A", functionalGrade: "Fully working" }
+  ]);
+  await phase([4, 9], [4, 9, 5]);
+  const published = await publishSaleEvent(owner, { saleEventId: event.id, announce: true });
+  if (published.problems?.length) fail(`Some starter lots could not be published: ${published.problems.join("; ")}`);
+  const lotNumber = async (id) => (await prisma.lot.findUnique({ where: { id }, select: { lotNumber: true } })).lotNumber;
+  const asNorthgate = await sessionFor(buyerUsers.northgate.userId);
+  const asBluewater = await sessionFor(buyerUsers.bluewater.userId);
+  const key = () => `starter-${(0, import_node_crypto6.randomBytes)(8).toString("hex")}`;
+  const bid = (who, lot, args) => placeBid(who, { lotNumber: lot, idempotencyKey: key(), ...args });
+  const [n1, n2, n3, n5, n6] = await Promise.all([lot1Draft.id, lot2.id, lot3.id, lot5.id, lot6.id].map(lotNumber));
+  await phase([4, 13], [3, 16]);
+  const win6 = await bid(asBluewater, n6, { amountMinor: 148e4 });
+  await bid(asNorthgate, n6, { amountMinor: 139e4 });
+  await bid(asNorthgate, n5, { amountMinor: 96e4 });
+  await phase([2, 9], [1, 16]);
+  await bid(asBluewater, n5, { amountMinor: 102e4 });
+  await bid(asNorthgate, n1, { amountMinor: 1104e3 });
+  await bid(asBluewater, n1, { amountMinor: 1065e3 });
+  const [r740, c9300, dl360] = lot2.lines;
+  await bid(asNorthgate, n2, { lines: [{ lotLineId: r740.id, unitPriceMinor: 115e3 }, { lotLineId: c9300.id, unitPriceMinor: 64e3 }] });
+  await bid(asBluewater, n2, { lines: [{ lotLineId: r740.id, unitPriceMinor: 121e3 }, { lotLineId: c9300.id, unitPriceMinor: 61e3 }, { lotLineId: dl360.id, unitPriceMinor: 48e3 }] });
+  await bid(asNorthgate, n3, { amountMinor: 15e5 });
+  await bid(asBluewater, n3, { amountMinor: 155e4 });
+  await bid(asNorthgate, n3, { amountMinor: 1625e3 });
+  for (const [id, day] of [[lot6.id, 2], [lot5.id, 0]]) {
+    const closedOn = story.at(day, 13);
+    await prisma.lot.update({ where: { id }, data: { closesAt: closedOn, originalClosesAt: closedOn } });
+    await phase([day, 13], [day, 13, 1]);
+    await advanceLotClock({ prisma }, id);
+  }
+  await phase([2, 15], [2, 15, 5]);
+  const [award6] = await awardLot(owner, { lotId: lot6.id, bidId: win6.bidId });
+  const invoice6 = await prisma.invoice.findUnique({ where: { invoiceNumber: award6.invoiceNumber } });
+  await phase([1, 11], [1, 11, 5]);
+  await recordOfflinePayment(owner, { invoiceId: invoice6.id, method: "wire", amountMinor: invoice6.totalMinor, reference: `FW ${(0, import_node_crypto6.randomBytes)(4).toString("hex").toUpperCase()} BLUEWATER IT ASSET`, paidOn: story.day(1) });
+  await phase([1, 11, 5], [1, 11, 10]);
+  await applyTimeline(prisma, timeline);
+  const order6 = await prisma.order.findUnique({ where: { orderNumber: award6.orderNumber } });
+  const awarded = await prisma.award.findUnique({ where: { id: award6.awardId } });
+  const inv6 = await prisma.invoice.findUnique({ where: { id: invoice6.id } });
+  const dueAt = addBusinessDays(new Date(awarded.awardedAt), settings.paymentDueBusinessDays, tz);
+  await prisma.invoice.update({ where: { id: inv6.id }, data: { dueAt, updatedAt: inv6.updatedAt } });
+  await prisma.order.update({ where: { id: order6.id }, data: { updatedAt: order6.updatedAt, paymentDueAt: dueAt, ...order6.readyAt ? { removalDueAt: addBusinessDays(new Date(order6.readyAt), settings.removalBusinessDays, tz) } : {} } });
+  for (const n of await prisma.notification.findMany({ where: { type: "lot_won", link: { endsWith: award6.invoiceNumber } } })) {
+    await prisma.notification.update({ where: { id: n.id }, data: { body: n.body.replace(/is due .*\.$/, `is due ${dueAt.toDateString()}.`) } });
+  }
+  for (const c of [cert1, cert2]) {
+    const before = await prisma.certificate.findUnique({ where: { id: c.id }, select: { issuedAt: true, updatedAt: true } });
+    await prisma.$transaction((tx) => rerenderCertificate(tx, c.id), { timeout: 12e4 });
+    const after = await prisma.certificate.update({ where: { id: c.id }, data: { updatedAt: before.updatedAt } });
+    await prisma.storedFile.update({ where: { id: after.pdfId }, data: { createdAt: before.issuedAt, updatedAt: before.issuedAt } });
+  }
+  const lotRows = await prisma.lot.findMany({ where: { saleEventId: event.id }, select: { lotNumber: true, title: true, status: true, format: true, bidBasis: true, bidCount: true }, orderBy: { lotNumber: "asc" } });
+  records.saleEvent = { title: event.title, lots: lotRows };
+  records.paidOrder = { orderNumber: award6.orderNumber, invoiceNumber: award6.invoiceNumber, buyer: "Bluewater IT Asset Trading Inc." };
+  return { password: password2, logins, records };
 }
 
 // features/keystone/domain/onboarding.ts
@@ -6461,6 +7144,42 @@ async function onboardingStatus(context) {
   ];
   return { complete: steps.every((s) => s.done), steps, cardPayments: Boolean(process.env.STRIPE_SECRET_KEY) };
 }
+async function serviceStatus(context) {
+  const settings = await getSettings(context.prisma);
+  const smtp = smtpConfig(settings);
+  const fromEnv = Boolean(process.env.SMTP_HOST);
+  const missing = [];
+  if (!smtp) missing.push("host");
+  else {
+    if (!smtp.from) missing.push("from address");
+    if (smtp.user && !smtp.pass) missing.push("password");
+  }
+  const [skipped, failed, sent] = await Promise.all([
+    context.prisma.notification.count({ where: { emailStatus: "skipped" } }),
+    context.prisma.notification.count({ where: { emailStatus: "failed" } }),
+    context.prisma.notification.count({ where: { emailStatus: "sent" } })
+  ]);
+  return {
+    email: {
+      configured: Boolean(smtp) && missing.length === 0,
+      source: smtp ? fromEnv ? "environment" : "settings" : null,
+      host: smtp?.host ?? null,
+      port: smtp?.port ?? null,
+      from: smtp?.from || null,
+      missing,
+      notificationsNotEmailed: skipped,
+      notificationsFailed: failed,
+      notificationsEmailed: sent
+    },
+    cards: {
+      configured: Boolean(process.env.STRIPE_SECRET_KEY),
+      publishableKey: Boolean(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || process.env.STRIPE_PUBLISHABLE_KEY),
+      webhookSecret: Boolean(process.env.STRIPE_WEBHOOK_SECRET),
+      mode: (process.env.STRIPE_SECRET_KEY ?? "").startsWith("sk_live_") ? "live" : process.env.STRIPE_SECRET_KEY ? "test keys" : null
+    },
+    storefrontUrl: settings.storefrontUrl || null
+  };
+}
 async function runElectronicsRecyclingOnboarding(context, input) {
   const session = requireStaff(context, "canManageOnboarding");
   const businessName = str(input.businessName, 200);
@@ -6468,6 +7187,7 @@ async function runElectronicsRecyclingOnboarding(context, input) {
   const f = input.facility ?? {};
   if (!str(f.addressLine1) || !str(f.city) || !str(f.postalCode)) fail("Enter the facility address.");
   const counts = {};
+  const startedAt = /* @__PURE__ */ new Date();
   await context.prisma.$transaction(async (tx) => {
     for (const role of ROLES) {
       const flags = Object.fromEntries(ROLE_PERMISSIONS.map((p) => [p, role.permissions.includes(p)]));
@@ -6477,20 +7197,20 @@ async function runElectronicsRecyclingOnboarding(context, input) {
         counts.roles = (counts.roles ?? 0) + 1;
       }
     }
-    const settings = await getSettings(tx);
+    const settings2 = await getSettings(tx);
     await tx.storeSettings.update({
-      where: { id: settings.id },
+      where: { id: settings2.id },
       data: {
         businessName,
         legalName: str(input.legalName, 200) || businessName,
-        supportEmail: str(input.supportEmail, 200) || settings.supportEmail,
-        supportPhone: str(input.supportPhone, 40) || settings.supportPhone,
-        timezone: str(input.timezone, 60) || settings.timezone || "America/Chicago",
+        supportEmail: str(input.supportEmail, 200) || settings2.supportEmail,
+        supportPhone: str(input.supportPhone, 40) || settings2.supportPhone,
+        timezone: str(input.timezone, 60) || settings2.timezone || "America/Chicago",
         weightUnit: input.weightUnit === "kg" ? "kg" : "lb",
-        wireInstructions: str(input.wireInstructions, 2e3) || settings.wireInstructions,
-        ...Array.isArray(settings.wholesaleTerms) && settings.wholesaleTerms.length ? {} : { wholesaleTerms: WHOLESALE_TERMS, wholesaleTermsVersion: "2026-1" },
-        ...Array.isArray(settings.serviceTerms) && settings.serviceTerms.length ? {} : { serviceTerms: SERVICE_TERMS, serviceTermsVersion: "2026-1" },
-        exportClause: settings.exportClause || EXPORT_CLAUSE
+        wireInstructions: str(input.wireInstructions, 2e3) || settings2.wireInstructions,
+        ...Array.isArray(settings2.wholesaleTerms) && settings2.wholesaleTerms.length ? {} : { wholesaleTerms: WHOLESALE_TERMS, wholesaleTermsVersion: "2026-1" },
+        ...Array.isArray(settings2.serviceTerms) && settings2.serviceTerms.length ? {} : { serviceTerms: SERVICE_TERMS, serviceTermsVersion: "2026-1" },
+        exportClause: settings2.exportClause || EXPORT_CLAUSE
       }
     });
     let facility = await tx.facility.findFirst({ orderBy: { createdAt: "asc" } });
@@ -6545,6 +7265,7 @@ async function runElectronicsRecyclingOnboarding(context, input) {
     for (const cert of input.certifications ?? []) {
       const name = str(cert.name, 40);
       if (!name) continue;
+      if (!str(cert.certificateNumber, 80)) fail(`Enter the certificate number for ${name}, or untick it.`);
       if (await tx.certification.findFirst({ where: { name, facilityId: facility.id } })) continue;
       await tx.certification.create({ data: { name, certificateNumber: str(cert.certificateNumber, 80), certifyingBody: str(cert.certifyingBody, 120), facilityId: facility.id, expiresOn: cert.expiresOn ? new Date(cert.expiresOn) : null, isPublic: true } });
       counts.certifications = (counts.certifications ?? 0) + 1;
@@ -6560,7 +7281,11 @@ async function runElectronicsRecyclingOnboarding(context, input) {
     }
     await tx.user.update({ where: { id: session.itemId }, data: { onboardingStatus: "completed" } });
   }, { timeout: 6e4 });
-  return { counts };
+  if (input.template !== "full") return { counts };
+  if (input.starterPassword && String(input.starterPassword).length < 10) fail("Use a starter password of at least 10 characters.");
+  const settings = await getSettings(context.prisma);
+  const starter = await seedStarterRecords(context, { businessName, supportEmail: settings.supportEmail, password: input.starterPassword, since: startedAt });
+  return { counts, starter };
 }
 
 // features/keystone/mutations/operations.ts
@@ -6568,7 +7293,7 @@ var q = (access, run) => ({ kind: "query", access, run });
 var m = (access, run) => ({ kind: "mutation", access, run });
 var SELL = ["canManageLots"];
 var AWARD = ["canAwardLots"];
-var BUYERS = ["canManageBuyers"];
+var BUYERS2 = ["canManageBuyers"];
 var PAY = ["canManagePayments"];
 var OPERATIONS = {
   // ---------------- public storefront (§5.1)
@@ -6600,7 +7325,9 @@ var OPERATIONS = {
   acceptWholesaleTerms: m("account", (c, i) => acceptWholesaleTerms(c, i)),
   downloadLotManifest: m("account", (c, i) => downloadLotManifest(c, i)),
   downloadBidSheet: m("account", (c, i) => downloadBidSheet(c, i)),
-  previewBidSheet: m("account", (c, i) => previewBidSheet(c, i)),
+  checkBidSheet: m("account", (c, i) => checkBidSheet(c, i)),
+  // Old name, kept until the storefront calls checkBidSheet.
+  previewBidSheet: m("account", (c, i) => checkBidSheet(c, i)),
   placeBid: m("account", (c, i) => placeBid(c, i)),
   placeBidFromSheet: m("account", (c, i) => placeBidFromSheet(c, i)),
   withdrawBid: m("account", (c, i) => withdrawBid(c, i)),
@@ -6623,11 +7350,11 @@ var OPERATIONS = {
   // ---------------- platform: Today
   todaySummary: q(["canAccessDashboard"], (c) => todaySummary(c)),
   // ---------------- platform: Sell
-  reviewBuyerApplication: m(BUYERS, (c, i) => reviewBuyerApplication(c, i)),
-  reviewBuyerDocument: m(BUYERS, (c, i) => reviewBuyerDocument(c, i)),
-  messageBuyer: m(BUYERS, (c, i) => messageBuyer(c, i)),
-  suspendBuyer: m(BUYERS, (c, i) => suspendBuyer(c, i)),
-  reinstateBuyer: m(BUYERS, (c, i) => reinstateBuyer(c, i)),
+  reviewBuyerApplication: m(BUYERS2, (c, i) => reviewBuyerApplication(c, i)),
+  reviewBuyerDocument: m(BUYERS2, (c, i) => reviewBuyerDocument(c, i)),
+  messageBuyer: m(BUYERS2, (c, i) => messageBuyer(c, i)),
+  suspendBuyer: m(BUYERS2, (c, i) => suspendBuyer(c, i)),
+  reinstateBuyer: m(BUYERS2, (c, i) => reinstateBuyer(c, i)),
   uploadManifest: m(SELL, (c, i) => uploadManifest(c, i)),
   mapManifest: m(SELL, (c, i) => mapManifest(c, i)),
   validateManifest: m(SELL, (c, i) => validateManifest(c, i)),
@@ -6666,8 +7393,8 @@ var OPERATIONS = {
   setJobHold: m(["canManageJobs"], (c, i) => setJobHold(c, i)),
   invoiceJob: m(["canManageJobs", "canManagePayments"], (c, i) => invoiceJob(c, i)),
   scheduleJob: m(["canDispatch"], (c, i) => scheduleJob(c, i)),
-  startJobRoute: m(["canCollect", "canDispatch"], (c, i) => startJobRoute(c, i)),
-  collectJob: m(["canCollect", "canDispatch"], (c, i) => collectJob(c, i)),
+  startJobRoute: m(["canCollect", "canDispatch", "canReceive"], (c, i) => startJobRoute(c, i)),
+  collectJob: m(["canCollect", "canDispatch", "canReceive"], (c, i) => collectJob(c, i)),
   receiveContainer: m(["canReceive"], (c, i) => receiveContainer(c, i)),
   resolveSealException: m(["canReceive", "canIssueCertificates"], (c, i) => resolveSealException(c, i)),
   // ---------------- platform: Process
@@ -6690,6 +7417,7 @@ var OPERATIONS = {
   shipOutbound: m(["canManageDownstream"], (c, i) => shipOutbound(c, i)),
   confirmOutboundReceipt: m(["canManageDownstream"], (c, i) => confirmOutboundReceipt(c, i)),
   massBalanceReport: q(["canManageDownstream", "canIssueCertificates", "canViewReports"], (c, i) => massBalanceReport(c, i ?? {})),
+  attachFile: m(["canManageLots", "canManageSettings", "canIssueCertificates", "canManageDownstream"], (c, i) => attachFile(c, i)),
   staffDownloadFile: m(["canIssueCertificates", "canManageSettlements", "canManageClients", "canViewReports"], (c, i) => staffDownloadFile(c, i)),
   // ---------------- platform: Money
   staffInvoicePdf: m(["canManagePayments", "canManageLots", "canManageSettlements", "canViewReports"], (c, i) => staffInvoicePdf(c, i)),
@@ -6712,8 +7440,15 @@ var OPERATIONS = {
   accountingExport: m(["canViewReports", "canManagePayments"], (c, i) => accountingExport(c, i ?? {})),
   // ---------------- platform: Settings
   onboardingStatus: q(["canManageOnboarding", "canManageSettings"], (c) => onboardingStatus(c)),
+  serviceStatus: q(["canManageSettings", "canManagePayments", "canManageOnboarding"], (c) => serviceStatus(c)),
   runElectronicsRecyclingOnboarding: m(["canManageOnboarding"], (c, i) => runElectronicsRecyclingOnboarding(c, i ?? {}))
 };
+function queryError(name, error) {
+  if (error instanceof import_graphql.GraphQLError) return error;
+  if (error instanceof DomainError || error?.name === "RuleError") return new import_graphql.GraphQLError(error.message, { extensions: { code: "REFUSED" } });
+  console.error(`[query ${name}]`, error);
+  return new import_graphql.GraphQLError("Something went wrong loading this. Try again.", { extensions: { code: "INTERNAL" } });
+}
 function guard(op, context) {
   if (Array.isArray(op.access)) requireStaff(context, ...op.access);
 }
@@ -6723,8 +7458,12 @@ function buildResolvers() {
   for (const [name, op] of Object.entries(OPERATIONS)) {
     if (op.kind === "query") {
       Query[name] = async (_root, args, context) => {
-        guard(op, context);
-        return toJson(await op.run(context, args.input ?? {}));
+        try {
+          guard(op, context);
+          return toJson(await op.run(context, args.input ?? {}));
+        } catch (error) {
+          throw queryError(name, error);
+        }
       };
     } else {
       Mutation[name] = async (_root, args, context) => {
@@ -6772,68 +7511,52 @@ function extendGraphqlSchema(baseSchema) {
 
 // features/keystone/lib/mail.ts
 var import_nodemailer2 = require("nodemailer");
-function getBaseUrlForEmails() {
-  if (process.env.SMTP_STORE_LINK) {
-    return process.env.SMTP_STORE_LINK;
-  }
-  console.warn("SMTP_STORE_LINK not set. Please add SMTP_STORE_LINK to your environment variables for email links to work properly.");
-  return "";
+function escapeHtml(value) {
+  return value.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }
-var transport = (0, import_nodemailer2.createTransport)({
-  // @ts-ignore
-  host: process.env.SMTP_HOST,
-  port: process.env.SMTP_PORT,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASSWORD
-  }
-});
-function passwordResetEmail({ url }) {
-  const backgroundColor = "#f9f9f9";
-  const textColor = "#444444";
-  const mainBackgroundColor = "#ffffff";
-  const buttonBackgroundColor = "#346df1";
-  const buttonBorderColor = "#346df1";
-  const buttonTextColor = "#ffffff";
+function passwordResetUrl(base, kind, token, email) {
+  const root = base.replace(/\/$/, "");
+  const query = `token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`;
+  return kind === "staff" ? `${root}/dashboard/reset?${query}` : `${root}/reset-password?${query}`;
+}
+function passwordResetHtml({ url, businessName, name }) {
   return `
-    <body style="background: ${backgroundColor};">
-      <table width="100%" border="0" cellspacing="20" cellpadding="0" style="background: ${mainBackgroundColor}; max-width: 600px; margin: auto; border-radius: 10px;">
-        <tr>
-          <td align="center" style="padding: 10px 0px 0px 0px; font-size: 18px; font-family: Helvetica, Arial, sans-serif; color: ${textColor};">
-            Please click below to reset your password
-          </td>
-        </tr>
-        <tr>
-          <td align="center" style="padding: 20px 0;">
-            <table border="0" cellspacing="0" cellpadding="0">
-              <tr>
-                <td align="center" style="border-radius: 5px;" bgcolor="${buttonBackgroundColor}"><a href="${url}" target="_blank" style="font-size: 18px; font-family: Helvetica, Arial, sans-serif; color: ${buttonTextColor}; text-decoration: none; border-radius: 5px; padding: 10px 20px; border: 1px solid ${buttonBorderColor}; display: inline-block; font-weight: bold;">Reset Password</a></td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <tr>
-          <td align="center" style="padding: 0px 0px 10px 0px; font-size: 16px; line-height: 22px; font-family: Helvetica, Arial, sans-serif; color: ${textColor};">
-            If you did not request this email you can safely ignore it.
-          </td>
-        </tr>
+    <body style="background:#f9f9f9;margin:0;padding:24px;">
+      <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background:#ffffff;max-width:560px;margin:auto;border-radius:8px;font-family:Helvetica,Arial,sans-serif;color:#333333;">
+        <tr><td style="padding:28px 28px 8px;font-size:18px;font-weight:bold;">${escapeHtml(businessName)}</td></tr>
+        <tr><td style="padding:8px 28px;font-size:15px;line-height:22px;">${name ? `Hello ${escapeHtml(name)},<br><br>` : ""}Someone asked to reset the password for this account. Use the button below to choose a new one.</td></tr>
+        <tr><td style="padding:16px 28px;"><a href="${url}" target="_blank" style="display:inline-block;background:#1f2937;color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:15px;font-weight:bold;">Choose a new password</a></td></tr>
+        <tr><td style="padding:8px 28px 28px;font-size:13px;line-height:20px;color:#666666;">The link works once and expires soon. If you did not ask for this, ignore this email; your password stays the same.</td></tr>
       </table>
-    </body>
-  `;
+    </body>`;
 }
-async function sendPasswordResetEmail(resetToken, to, baseUrl) {
-  const frontendUrl = baseUrl || getBaseUrlForEmails();
-  const info = await transport.sendMail({
-    to,
-    from: process.env.SMTP_FROM,
-    subject: "Your password reset token!",
-    html: passwordResetEmail({
-      url: `${frontendUrl}/dashboard/reset?token=${resetToken}`
-    })
-  });
-  if (process.env.MAIL_USER?.includes("ethereal.email")) {
-    console.log(`\u{1F4E7} Message Sent!  Preview it at ${(0, import_nodemailer2.getTestMessageUrl)(info)}`);
+async function sendPasswordResetEmail({ token, identity, context }) {
+  const prisma = context.sudo().prisma;
+  const settings = await getSettings(prisma);
+  const smtp = smtpConfig(settings);
+  if (!smtp) {
+    console.warn("[email] Password reset requested but no mail server is set up in Settings or SMTP_*.");
+    return;
   }
+  const user = await prisma.user.findUnique({ where: { email: identity }, select: { kind: true, name: true, email: true } });
+  if (!user) return;
+  const base = process.env.SMTP_STORE_LINK || settings.storefrontUrl || "";
+  const url = passwordResetUrl(base, user.kind, token, user.email);
+  const businessName = settings.businessName || "Account";
+  const transport = (0, import_nodemailer2.createTransport)({ host: smtp.host, port: smtp.port, secure: smtp.port === 465, auth: smtp.user ? { user: smtp.user, pass: smtp.pass } : void 0 });
+  await transport.sendMail({
+    from: smtp.from ? `${businessName} <${smtp.from}>` : void 0,
+    to: user.email,
+    subject: `Reset your ${businessName} password`,
+    text: `Someone asked to reset the password for this account. Choose a new one here:
+
+${url}
+
+If you did not ask for this, ignore this email.
+
+${businessName}`,
+    html: passwordResetHtml({ url, businessName, name: user.name || "" })
+  });
 }
 
 // features/keystone/mcp-oauth/session.ts
@@ -6867,11 +7590,39 @@ function withMcpBearerSessions(strategy, listKey = "User") {
   };
 }
 
+// features/keystone/lib/prismaErrors.ts
+var PrismaQueryError = class extends Error {
+  constructor(message, code, meta) {
+    super(message);
+    this.name = "PrismaQueryError";
+    this.code = code;
+    this.meta = meta;
+  }
+};
+function isKeystonePrismaError(value) {
+  return Boolean(value && typeof value === "object" && value.name === "GraphQLError" && value.extensions?.code === "KS_PRISMA_ERROR");
+}
+function rethrowPrismaErrors(client) {
+  return client.$extends({
+    query: {
+      async $allOperations({ args, query }) {
+        const result = await query(args);
+        if (isKeystonePrismaError(result)) {
+          const prisma = result.extensions.prisma ?? {};
+          const message = result.extensions.debug?.message ?? result.message;
+          throw new PrismaQueryError(message, prisma.code ?? "KS_PRISMA_ERROR", prisma.meta);
+        }
+        return result;
+      }
+    }
+  });
+}
+
 // features/keystone/index.ts
 var databaseURL = process.env.DATABASE_URL || "file:./keystone.db";
 var sessionConfig = {
   maxAge: 60 * 60 * 24 * 360,
-  secret: process.env.SESSION_SECRET || (0, import_node_crypto6.createHash)("sha256").update(`openfront-electronics-recycling:${databaseURL}`).digest("hex")
+  secret: process.env.SESSION_SECRET || (0, import_node_crypto7.createHash)("sha256").update(`openfront-electronics-recycling:${databaseURL}`).digest("hex")
 };
 var { withAuth } = (0, import_auth.createAuth)({
   listKey: "User",
@@ -6891,16 +7642,18 @@ var { withAuth } = (0, import_auth.createAuth)({
   },
   passwordResetLink: {
     async sendToken(args) {
-      await sendPasswordResetEmail(args.token, args.identity);
+      await sendPasswordResetEmail({ token: args.token, identity: args.identity, context: args.context });
     }
   },
   sessionData: SESSION_DATA
 });
 var keystone_default = withAuth(
-  (0, import_core26.config)({
+  (0, import_core28.config)({
     db: {
       provider: "postgresql",
-      url: databaseURL
+      url: databaseURL,
+      // Failed queries must throw (Keystone returns them as values otherwise).
+      extendPrismaClient: rethrowPrismaErrors
     },
     lists: models,
     ui: {

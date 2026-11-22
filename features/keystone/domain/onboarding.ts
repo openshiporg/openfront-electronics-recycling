@@ -1,6 +1,6 @@
 import { ROLE_PERMISSIONS, type RolePermission } from '../access'
 import { fail, requireStaff, str, type Ctx, type Tx } from '../lib/core'
-import { getSettings } from '../lib/services'
+import { getSettings, smtpConfig } from '../lib/services'
 import { seedStarterRecords } from './starterRecords'
 
 // §4.11. Seeds everything a recycler needs on day one. Safe to run twice: every
@@ -111,6 +111,47 @@ export async function onboardingStatus(context: Ctx) {
   return { complete: steps.every((s) => s.done), steps, cardPayments: Boolean(process.env.STRIPE_SECRET_KEY) }
 }
 
+/**
+ * Plain status of the outside services, for Settings (item 5). No secrets: only what is set and where.
+ * Nothing in the product waits on email; without SMTP, notifications stay in each person's in-app list.
+ */
+export async function serviceStatus(context: Ctx) {
+  const settings = await getSettings(context.prisma)
+  const smtp = smtpConfig(settings)
+  const fromEnv = Boolean(process.env.SMTP_HOST)
+  const missing: string[] = []
+  if (!smtp) missing.push('host')
+  else {
+    if (!smtp.from) missing.push('from address')
+    if (smtp.user && !smtp.pass) missing.push('password')
+  }
+  const [skipped, failed, sent] = await Promise.all([
+    context.prisma.notification.count({ where: { emailStatus: 'skipped' } }),
+    context.prisma.notification.count({ where: { emailStatus: 'failed' } }),
+    context.prisma.notification.count({ where: { emailStatus: 'sent' } }),
+  ])
+  return {
+    email: {
+      configured: Boolean(smtp) && missing.length === 0,
+      source: smtp ? (fromEnv ? 'environment' : 'settings') : null,
+      host: smtp?.host ?? null,
+      port: smtp?.port ?? null,
+      from: smtp?.from || null,
+      missing,
+      notificationsNotEmailed: skipped,
+      notificationsFailed: failed,
+      notificationsEmailed: sent,
+    },
+    cards: {
+      configured: Boolean(process.env.STRIPE_SECRET_KEY),
+      publishableKey: Boolean(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || process.env.STRIPE_PUBLISHABLE_KEY),
+      webhookSecret: Boolean(process.env.STRIPE_WEBHOOK_SECRET),
+      mode: (process.env.STRIPE_SECRET_KEY ?? '').startsWith('sk_live_') ? 'live' : process.env.STRIPE_SECRET_KEY ? 'test keys' : null,
+    },
+    storefrontUrl: settings.storefrontUrl || null,
+  }
+}
+
 type OnboardingInput = {
   businessName?: string; legalName?: string; supportEmail?: string; supportPhone?: string; timezone?: string; weightUnit?: string
   facility?: { name?: string; code?: string; addressLine1?: string; city?: string; region?: string; postalCode?: string; countryCode?: string; phone?: string }
@@ -127,7 +168,8 @@ export async function runElectronicsRecyclingOnboarding(context: Ctx, input: Onb
   const businessName = str(input.businessName, 200)
   if (!businessName) fail('Enter the business name.')
   const f = input.facility ?? {}
-  if (!str(f.addressLine1) || !str(f.city) || !str(f.postalCode)) fail('Enter the facility address.')
+  const hasFacility = (await context.prisma.facility.count()) > 0
+  if (!hasFacility && (!str(f.addressLine1) || !str(f.city) || !str(f.postalCode))) fail('Enter the facility address.')
   const counts: Record<string, number> = {}
   const startedAt = new Date()
 

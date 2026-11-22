@@ -11,14 +11,15 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
   const sp = await searchParams
   const status = param(sp, 'status') || 'requested'
   const q = param(sp, 'q')
+  const forOrg = param(sp, 'organization')
   return (
     <PlatformPage route="/platform/jobs" title="Requests and jobs" meta="Pickup requests from the website and by phone, through quote, collection, processing and certificates.">
       {async (staff) => {
         const orgs = await listQuery<any>('query { clientOrganizations(orderBy: [{ name: asc }], take: 300) { id name sites { id name city } } facilities(where: { isActive: { equals: true } }) { id name } }')
         const create = can(staff, 'canManageJobs', 'canManageClients') && orgs.ok ? (
           <OpDrawer op="staffRequestJob" title="New pickup request" description="For a client who phoned or emailed. Add the client under Clients first if they are new." trigger="New request" triggerVariant="primary" fields={[
-            { name: 'organizationId', label: 'Client', type: 'select', required: true, options: orgs.data.clientOrganizations.map((o: any) => ({ value: o.id, label: o.name })) },
-            { name: 'siteId', label: 'Saved site', type: 'select', options: orgs.data.clientOrganizations.flatMap((o: any) => o.sites.map((s: any) => ({ value: s.id, label: `${o.name} · ${s.name || s.city}` }))), hint: 'Or enter an address below.' },
+            { name: 'organizationId', label: 'Client', type: 'select', required: true, options: orgs.data.clientOrganizations.map((o: any) => ({ value: o.id, label: o.name })), defaultValue: forOrg || undefined },
+            { name: 'siteId', label: 'Saved site', type: 'select', options: orgs.data.clientOrganizations.filter((o: any) => !forOrg || o.id === forOrg).flatMap((o: any) => o.sites.map((s: any) => ({ value: s.id, label: `${o.name} · ${s.name || s.city}` }))), hint: 'Or enter an address below.' },
             { name: 'type', label: 'Type', type: 'select', required: true, options: [{ value: 'pickup', label: 'We collect' }, { value: 'drop_off', label: 'Client drops off' }], defaultValue: 'pickup' },
             { name: 'facilityId', label: 'Facility', type: 'select', options: orgs.data.facilities.map((f: any) => ({ value: f.id, label: f.name })) },
             { name: 'contactName', label: 'Contact', required: true }, { name: 'contactEmail', label: 'Contact email', type: 'email', required: true }, { name: 'contactPhone', label: 'Contact phone' },

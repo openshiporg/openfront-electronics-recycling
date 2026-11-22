@@ -12,14 +12,14 @@ export default async function AuditPage({ searchParams }: { searchParams: Promis
   return (
     <PlatformPage route="/platform/audit" title="Audit bench" meta="Record each asset by serial: grade it, note pulled drives, photograph it.">
       {async (staff) => {
-        const r = await listQuery<any>(`query A($job: ID) {
+        const r = await listQuery<any>(`query A($job: ID!, $hasJob: Boolean!) {
           jobs(where: { status: { in: [collected, received, processing] } }, orderBy: [{ receivedAt: asc }], take: 80) { id jobNumber status organization { name } assetsCount }
-          job(where: { id: $job }) { id jobNumber status organization { name } containers(orderBy: [{ label: asc }]) { id label status } assets(where: { parent: null }, orderBy: [{ createdAt: desc }], take: 15) { id assetNumber serialNumber manufacturer model status sanitizationStatus childrenCount category { name } } }
+          job(where: { id: $job }) @include(if: $hasJob) { id jobNumber status organization { name } containers(orderBy: [{ label: asc }]) { id label status } assets(where: { parent: null }, orderBy: [{ createdAt: desc }], take: 15) { id assetNumber serialNumber manufacturer model status sanitizationStatus childrenCount category { name } } }
           materialCategories(where: { AND: [{ isActive: { equals: true } }, { kind: { in: [equipment, component] } }] }, orderBy: [{ sortOrder: asc }, { name: asc }]) { id name dataBearingDefault }
           gradeDefinitions(orderBy: [{ sortOrder: asc }]) { id kind code label }
-        }`, { job: jobId || null })
+        }`, { job: jobId || '', hasJob: Boolean(jobId) })
         if (!r.ok) return <Notice tone="alert">{r.error}</Notice>
-        const job = r.data.job
+        const job = r.data.job ?? null
         const audit = can(staff, 'canAuditAssets')
         return (
           <div className="mx-auto grid w-full max-w-3xl gap-5">

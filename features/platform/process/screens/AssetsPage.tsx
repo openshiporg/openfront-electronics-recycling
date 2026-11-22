@@ -12,12 +12,14 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
   const q = param(sp, 'q')
   const jobId = param(sp, 'job')
   const san = param(sp, 'san')
+  const orgId = param(sp, 'organization')
   return (
     <PlatformPage route="/platform/assets" title="Assets" meta="Every audited item by serial. Search by serial, asset number or client tag.">
       {async (staff) => {
         const where: any = { AND: [] as any[] }
         if (q) where.AND.push({ OR: [{ serialNumber: { contains: q, mode: 'insensitive' } }, { assetNumber: { contains: q, mode: 'insensitive' } }, { clientAssetTag: { contains: q, mode: 'insensitive' } }, { model: { contains: q, mode: 'insensitive' } }] })
         if (jobId) where.AND.push({ job: { id: { equals: jobId } } })
+        if (orgId) where.AND.push({ job: { organization: { id: { equals: orgId } } } })
         if (san) where.AND.push({ sanitizationStatus: { equals: san } })
         const data = await readTabbedList<any>({ list: 'assets', type: 'Asset', fields: FIELDS, current: status, where, orderBy: [{ createdAt: 'desc' }], page: Number(param(sp, 'page')) || 1, tabs: [
           { value: 'all', label: 'All', where: {} },
@@ -28,21 +30,21 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
           { value: 'on_hold', label: 'On hold', where: { status: { equals: 'on_hold' } } },
         ] })
         const manage = can(staff, 'canAuditAssets', 'canManageLots')
-        const exportInput = { jobId: jobId || null, search: q || null, status: ['all', 'audited', 'allocated', 'released'].includes(status) ? null : status }
+        const exportInput = { jobId: jobId || null, organizationId: orgId || null, search: q || null, status: ['all', 'audited', 'allocated', 'released'].includes(status) ? null : status }
         return (
           <>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <form className="flex flex-wrap gap-2" action="/dashboard/platform/assets">
                 <input type="hidden" name="status" value={status} />
-                {jobId ? <input type="hidden" name="job" value={jobId} /> : null}
+                {jobId ? <input type="hidden" name="job" value={jobId} /> : null}{orgId ? <input type="hidden" name="organization" value={orgId} /> : null}
                 <input name="q" defaultValue={q} placeholder="Serial, asset number, client tag" className="h-9 w-64 max-w-full rounded-[6px] border bg-background px-3 text-sm" />
                 <select name="san" defaultValue={san} className="h-9 rounded-[6px] border bg-background px-3 text-sm"><option value="">Any sanitisation</option>{['pending', 'passed', 'failed', 'destroyed', 'not_required'].map((s) => <option key={s} value={s}>{label(s)}</option>)}</select>
                 <button className="h-9 rounded-[6px] border px-3 text-sm">Search</button>
-                {jobId ? <RowLink href="/dashboard/platform/assets">Every job</RowLink> : null}
+                {jobId || orgId ? <RowLink href="/dashboard/platform/assets">Every job</RowLink> : null}
               </form>
               <Track wrap>
                 <OpButton op="exportAssets" input={exportInput} label="Export to Excel" />
-                {jobId ? <OpButton op="exportAssets" input={{ ...exportInput, forClient: true }} label="Client asset list" /> : null}
+                {jobId || orgId ? <OpButton op="exportAssets" input={{ ...exportInput, forClient: true }} label="Client asset list" /> : null}
                 {can(staff, 'canAuditAssets') ? <RowLink href={`/dashboard/platform/audit${jobId ? `?job=${jobId}` : ''}`}>Audit or import</RowLink> : null}
               </Track>
             </div>
@@ -55,7 +57,7 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
                 {can(staff, 'canSanitize') ? <RowLink href="/dashboard/platform/sanitization">Record sanitisation</RowLink> : null}
               </Track>
             ) : null}
-            <TabbedTable label="Assets" path="/dashboard/platform/assets" params={{ status, q, job: jobId, san }} data={data} empty="No assets match." head={[{ label: <SelectAll group="assetIds" /> }, { label: 'Asset' }, { label: 'Item' }, { label: 'Job' }, { label: 'Grade' }, { label: 'Data' }, { label: 'Status' }, { label: 'Value', className: 'text-right' }]} row={(a) => (
+            <TabbedTable label="Assets" path="/dashboard/platform/assets" params={{ status, q, job: jobId, san, organization: orgId }} data={data} empty="No assets match." head={[{ label: <SelectAll group="assetIds" /> }, { label: 'Asset' }, { label: 'Item' }, { label: 'Job' }, { label: 'Grade' }, { label: 'Data' }, { label: 'Status' }, { label: 'Value', className: 'text-right' }]} row={(a) => (
               <tr key={a.id}>
                 <Td><input type="checkbox" data-select="assetIds" value={a.id} aria-label={`Select ${a.assetNumber}`} /></Td>
                 <Td><span className="font-mono text-xs">{a.assetNumber}</span><div>{a.serialNumber || '—'}</div>{a.clientAssetTag ? <div className="text-xs text-muted-foreground">Tag {a.clientAssetTag}</div> : null}{a.parent ? <div className="text-xs text-muted-foreground">Pulled from {a.parent.assetNumber}</div> : null}</Td>

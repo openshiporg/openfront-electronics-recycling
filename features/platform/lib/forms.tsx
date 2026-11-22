@@ -20,7 +20,9 @@ import { deleteItem, readOperation, runOperation, saveItem, type ActionResult } 
 export type FieldSpec = {
   name: string
   label: string
-  type?: 'text' | 'textarea' | 'number' | 'money' | 'percent' | 'date' | 'datetime' | 'time' | 'select' | 'multiselect' | 'checkbox' | 'file' | 'files' | 'email' | 'hidden' | 'lines' | 'json' | 'document' | 'list' | 'decimal'
+  type?: 'text' | 'textarea' | 'number' | 'money' | 'percent' | 'date' | 'datetime' | 'time' | 'select' | 'multiselect' | 'checkbox' | 'file' | 'files' | 'email' | 'password' | 'hidden' | 'lines' | 'json' | 'document' | 'list' | 'decimal'
+  /** Leave the field out when it is empty (for secrets such as a password: empty keeps the saved one). */
+  omitEmpty?: boolean
   /** Keystone relationship: a select becomes { connect: { id } }, a multiselect { set: [...] }. */
   relation?: boolean
   options?: Array<{ value: string; label: string }>
@@ -84,9 +86,11 @@ export async function collect(form: FormData, fields: FieldSpec[], forUpdate = f
       }
       default: out[f.name] = raw === null ? '' : String(raw)
     }
+    if (f.omitEmpty && (out[f.name] === '' || out[f.name] === null)) { delete out[f.name]; continue }
     if (f.relation) {
       const v = out[f.name]
-      if (Array.isArray(v)) out[f.name] = { set: v.map((id) => ({ id })) }
+      // Keystone create inputs accept connect only; updates replace the whole set.
+      if (Array.isArray(v)) out[f.name] = forUpdate ? { set: v.map((id) => ({ id })) } : v.length ? { connect: v.map((id) => ({ id })) } : undefined
       else out[f.name] = v ? { connect: { id: v } } : forUpdate ? { disconnect: true } : undefined
       if (out[f.name] === undefined) delete out[f.name]
     }
@@ -287,14 +291,21 @@ export function OpDrawer({ trigger, title, description, triggerVariant = 'raised
 }
 
 /** Drawer that creates or edits a Keystone list item. */
-export function ItemDrawer({ listKey, id, fields, fixed, trigger, title, description, triggerVariant = 'raised', submitLabel = 'Save' }: {
+export function ItemDrawer({ listKey, id, fields, fixed, trigger, title, description, triggerVariant = 'raised', submitLabel = 'Save', onResultHref }: {
   listKey: string; id?: string | null; fields: FieldSpec[]; fixed?: Record<string, unknown>; trigger: ReactNode; title: string; description?: string; triggerVariant?: PillVariant; submitLabel?: string
+  /** After a create, go here; "{id}" is replaced with the new item's id. */
+  onResultHref?: string
 }) {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const { submit, pending, error } = useSubmit(async (form) => {
     const values = await collect(form, fields, Boolean(id))
     return saveItem(listKey, id ?? null, { ...(fixed ?? {}), ...values })
-  }, () => setOpen(false))
+  }, (result) => {
+    setOpen(false)
+    const newId = (result.data as any)?.id
+    if (onResultHref && newId) router.push(onResultHref.replace('{id}', encodeURIComponent(newId)))
+  })
   return (
     <>
       <Pill size="sm" variant={triggerVariant} onClick={() => setOpen(true)}>{trigger}</Pill>

@@ -90,3 +90,37 @@ test('a buyer manager can add a buyer user, never a staff account or a client us
   assert.equal(editBuyer.errors, undefined, editBuyer.errors?.[0]?.message)
   assert.equal(editBuyer.data.updateUser.buyerRole, 'admin')
 })
+
+test('settings say plainly whether email is set up, without the password, and nothing waits on it', { skip }, async () => {
+  const saved = Object.fromEntries(['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASSWORD', 'SMTP_FROM'].map((k) => [k, process.env[k]]))
+  for (const k of Object.keys(saved)) delete process.env[k]
+  const before = await f.settings(ctx.prisma)
+  try {
+    const staffCtx = await ctx.as((await f.staff(ctx.prisma)).id)
+    const read = async () => {
+      const out = await staffCtx.graphql.raw({ query: 'query { serviceStatus(input: {}) }' })
+      assert.equal(out.errors, undefined)
+      return out.data.serviceStatus
+    }
+    await ctx.prisma.storeSettings.update({ where: { id: 1 }, data: { smtpHost: null, smtpPassword: null } })
+    let s = await read()
+    assert.equal(s.email.configured, false)
+    assert.deepEqual(s.email.missing, ['host'])
+
+    await ctx.prisma.storeSettings.update({ where: { id: 1 }, data: { smtpHost: 'smtp.example.net', smtpPort: 2525, smtpUser: 'mailer', smtpPassword: 'secret-value-123', smtpFrom: 'out@example.net' } })
+    s = await read()
+    assert.equal(s.email.configured, true)
+    assert.equal(s.email.source, 'settings')
+    assert.equal(s.email.host, 'smtp.example.net')
+    assert.ok(!JSON.stringify(s).includes('secret-value-123'), 'the SMTP password is never returned')
+
+    // A buyer cannot read it.
+    const b = await f.buyer(ctx.prisma)
+    const buyerCtx = await ctx.as(b.user.id)
+    const denied = await buyerCtx.graphql.raw({ query: 'query { serviceStatus(input: {}) }' })
+    assert.ok(denied.errors?.length)
+  } finally {
+    await ctx.prisma.storeSettings.update({ where: { id: 1 }, data: { smtpHost: before.smtpHost, smtpPort: before.smtpPort, smtpUser: before.smtpUser, smtpPassword: before.smtpPassword, smtpFrom: before.smtpFrom } })
+    for (const [k, v] of Object.entries(saved)) if (v !== undefined) process.env[k] = v
+  }
+})

@@ -8898,6 +8898,7 @@ type Mutation {
   acceptWholesaleTerms(input: JSON): CommandResult!
   downloadLotManifest(input: JSON): CommandResult!
   downloadBidSheet(input: JSON): CommandResult!
+  checkBidSheet(input: JSON): CommandResult!
   previewBidSheet(input: JSON): CommandResult!
   placeBid(input: JSON): CommandResult!
   placeBidFromSheet(input: JSON): CommandResult!
@@ -8974,6 +8975,7 @@ type Mutation {
   revokeCertificate(input: JSON): CommandResult!
   shipOutbound(input: JSON): CommandResult!
   confirmOutboundReceipt(input: JSON): CommandResult!
+  attachFile(input: JSON): CommandResult!
   staffDownloadFile(input: JSON): CommandResult!
   staffInvoicePdf(input: JSON): CommandResult!
   addInvoiceLine(input: JSON): CommandResult!
@@ -9232,6 +9234,7 @@ type Query {
   salesReport(input: JSON): JSON
   clientImpactReport(input: JSON): JSON
   onboardingStatus(input: JSON): JSON
+  serviceStatus(input: JSON): JSON
 }
 
 union AuthenticatedItem = User

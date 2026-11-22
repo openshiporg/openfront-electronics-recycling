@@ -13,7 +13,7 @@ import * as reads from '../domain/reads'
 import * as reports from '../domain/reports'
 import * as settlements from '../domain/settlements'
 import * as sheets from '../domain/sheets'
-import { runElectronicsRecyclingOnboarding, onboardingStatus } from '../domain/onboarding'
+import { runElectronicsRecyclingOnboarding, onboardingStatus, serviceStatus } from '../domain/onboarding'
 
 /**
  * Every custom operation, in one table.
@@ -187,6 +187,7 @@ export const OPERATIONS: Record<string, Op> = {
 
   // ---------------- platform: Settings
   onboardingStatus: q(['canManageOnboarding', 'canManageSettings'], (c) => onboardingStatus(c)),
+  serviceStatus: q(['canManageSettings', 'canManagePayments', 'canManageOnboarding'], (c) => serviceStatus(c)),
   runElectronicsRecyclingOnboarding: m(['canManageOnboarding'], (c, i) => runElectronicsRecyclingOnboarding(c, i ?? {})),
 }
 
