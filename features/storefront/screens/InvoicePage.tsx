@@ -7,7 +7,7 @@ import { PayBox } from '../components/pay/PayBox'
 import { LoadError, Notice, StatusPill } from '../components/ui'
 import { cmd } from '../lib/data/client'
 import { getStore, myInvoice } from '../lib/data/store'
-import { date, label, money } from '../lib/format'
+import { date, label, money, taxTreatment } from '../lib/format'
 
 /** U10, U11, U12 and C5: one invoice, its PDF, and how to pay it. */
 export async function InvoicePage({ kind, params, searchParams }: { kind: 'buyer' | 'client'; params: Promise<{ invoiceNumber: string }>; searchParams: Promise<{ session?: string }> }) {
@@ -53,7 +53,7 @@ export async function InvoicePage({ kind, params, searchParams }: { kind: 'buyer
                 {inv.orderNumber ? <><dt>Order</dt><dd><Link className="ar-textlink" href={`/buyer/orders/${inv.orderNumber}`}>{inv.orderNumber}</Link></dd></> : null}
                 {inv.jobNumber ? <><dt>Job</dt><dd><Link className="ar-textlink" href={`/client/jobs/${inv.jobNumber}`}>{inv.jobNumber}</Link></dd></> : null}
                 <dt>Type</dt><dd>{label(inv.kind)}</dd>
-                {inv.taxExemptReason ? <><dt>Tax</dt><dd>{inv.taxExemptReason}</dd></> : null}
+                <dt>Tax</dt><dd>{taxTreatment(inv.taxExemptReason, inv.taxMinor || 0)}</dd>
               </dl>
             </div>
             <div className="ar-table-wrap">

@@ -56,14 +56,17 @@ export async function LotPage({ params }: { params: Promise<{ lotNumber: string 
         lede={<span className="ar-meta-line"><span className="ar-pill ar-pill-y">Lot {lot.lotNumber}</span><StatusPill status={lot.status} />{lot.category ? <span className="ar-muted">{lot.category}</span> : null}</span>}
       />
       <div className="ar-wrap ar-page">
-        <div className="ar-split">
-          <div className="ar-stack">
+        {/* Wide: photo, facts and details on the left, bid panel on the right. Single column: photo and facts, then the bid panel, then details. */}
+        <div className="ar-split ar-lot-split">
+          <div className="ar-stack ar-lot-head">
             <div className="ar-lot-top" style={{ gridTemplateColumns: '1fr' }}>
               <Gallery images={images} title={lot.title} />
             </div>
             <dl className="ar-lot-facts">
               {facts.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}
             </dl>
+          </div>
+          <div className="ar-stack ar-lot-body">
             {lot.conditionSummary || description.length ? (
               <section className="ar-panel">
                 <h2 style={{ marginBottom: 10 }}>About this lot</h2>
@@ -109,7 +112,7 @@ export async function LotPage({ params }: { params: Promise<{ lotNumber: string 
             )}
           </div>
 
-          <aside aria-label="Bidding">
+          <aside aria-label="Bidding" className="ar-lot-aside">
             {priced ? (
               <BidPanel lot={lot} currency={currency} tz={tz} serverNow={serverNow} termsVersion={s?.wholesaleTermsVersion || ''} />
             ) : (

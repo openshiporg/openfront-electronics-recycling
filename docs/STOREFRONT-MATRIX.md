@@ -8,6 +8,10 @@ real adapter. Screenshots are in `Euler/state/screenshots/b7-e-recycling/` (`c-*
 - **Action:** done in a browser as that person, and the record was then checked in the database.
 - **Rendered:** the page was loaded and checked at 402 and 1440 px, but there was no write to do.
 
+**Count: 30 rows. 21 by action, 9 rendered.**
+- **Action:** P3, P7, P8, P10, U1, U3, U4, U5, U6, U7, U8, U10, U11, U12, U13, U14, U15, C1, C3, C4 (partly: certificate yes, no settlement exists), C5.
+- **Rendered:** P1, P2, P4, P5, P6, P9, U2, U9, C2. These pages are reads with nothing to submit.
+
 People used:
 - Sofia Reyes, Reyes Refurb & Liquidation LLC: a new buyer, signed up through the UI.
 - Seeded buyers: Northgate Refurbishing, Bluewater IT Asset Trading, and Copperline (submitted, not approved).
@@ -34,7 +38,7 @@ People used:
 
 | Row | Route | Proof | Record / why |
 |---|---|---|---|
-| U1 | `/buyer` | Rendered | Application status, standing, bids in play and invoices due, for Sofia, Northgate and Atlas (needs info, with a reply box). |
+| U1 | `/buyer` | **Action** | Atlas Devices (needs info) answered staff's request from the account home with the reply box: BuyerMessage `cmwriy24p00018c0h3wscgocp`, and the page shows "Sent". The page also shows application status, standing, bids in play and invoices due for Sofia and Northgate. |
 | U2 | `/lots` (approved) | Rendered | Prices shown, with filters for category, format and closing time. |
 | U3 | `/lots/[lotNumber]` | **Action** | Manifest search (including serials) and sort, tested on L-2026-1002 (commit 87b3bbf). Specs read as plain labels, e.g. "Intel Xeon Gold 6130 · 256 GB RAM". |
 | U4 | `/lots/[lotNumber]` | **Action** | `L-2026-1002-manifest.xlsx` downloaded and opened: 6 rows. The column headers are made by the backend export and still show the raw keys `cpu` and `ramGb`. |

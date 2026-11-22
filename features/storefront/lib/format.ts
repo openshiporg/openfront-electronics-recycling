@@ -139,3 +139,12 @@ export function specText(specs: Record<string, unknown> | null | undefined) {
     .map(([k, v]) => (SPEC_FORMAT[k] ? SPEC_FORMAT[k](String(v)) : `${tidyKey(k)}: ${v}`))
     .join(' · ')
 }
+
+/** Plain words for an invoice's tax treatment (taxExemptReason is '', 'resale certificate' or 'export'). */
+export function taxTreatment(reason: string | null | undefined, taxMinor: number): string {
+  const r = (reason || '').trim().toLowerCase()
+  if (r === 'resale certificate' || r === 'resale' || r === 'exempt_resale') return 'Exempt: resale certificate'
+  if (r === 'export' || r === 'exported') return 'Exempt: goods for export'
+  if (r) return `Exempt: ${r}`
+  return taxMinor > 0 ? 'Sales tax charged' : 'No sales tax on this invoice'
+}
