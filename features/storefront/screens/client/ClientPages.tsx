@@ -171,7 +171,7 @@ export async function ClientJobPage({ params, searchParams }: { params: Promise<
                       <div><strong>{c.certificateNumber}</strong> <StatusPill status={c.status} /></div>
                       <span className="ar-small ar-muted">{label(c.type)} · issued {date(c.issuedAt, tz)}</span>
                       {c.revokedReason ? <span className="ar-small" style={{ color: 'var(--ar-red)' }}>{c.revokedReason}</span> : null}
-                      <div className="ar-actions"><FileButton what="certificate" id={c.certificateNumber} label="PDF" />{c.verificationCode ? <Link className="ar-textlink ar-small" href={`/verify/${c.verificationCode}`}>Public check page</Link> : null}</div>
+                      <div className="ar-actions"><FileButton what="certificate" id={c.certificateNumber} label="Certificate PDF" />{c.verificationCode ? <Link className="ar-textlink ar-small" href={`/verify/${c.verificationCode}`}>Public check page</Link> : null}</div>
                     </li>
                   ))}
                 </ul>

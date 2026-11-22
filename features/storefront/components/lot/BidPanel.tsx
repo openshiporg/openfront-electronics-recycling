@@ -12,7 +12,7 @@ export function newKey() {
 }
 
 /** U15: the wholesale terms gate, shown before any bid when the accepted version is not current. */
-export function TermsGate({ version, onDone }: { version: string; onDone: () => void }) {
+export function TermsGate({ version, onDone }: { version: string; onDone: () => void | Promise<void> }) {
   const [checked, setChecked] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -24,8 +24,8 @@ export function TermsGate({ version, onDone }: { version: string; onDone: () => 
       <button type="button" className="ar-btn ar-btn-primary ar-btn-block" disabled={!checked || busy} onClick={async () => {
         setBusy(true); setError('')
         const r = await acceptTermsAction(version)
+        if (r.ok) await onDone(); else setError(r.error)
         setBusy(false)
-        if (r.ok) onDone(); else setError(r.error)
       }}>{busy ? 'Saving…' : 'Accept terms'}</button>
     </div>
   )
@@ -68,9 +68,12 @@ export function BidPanel({ lot: initial, currency, tz, serverNow, termsVersion }
     if (!r.ok) { if (r.needsTerms) setNeedsTerms(true); setError(r.error); key.current = newKey(); return }
     key.current = newKey()
     setAmount('')
-    setDone({ title: lot.format === 'sealed_bid' ? 'Your sealed bid is in' : 'Your bid is in', body: <>{money(r.data.amountMinor, currency)} at {dateTime(new Date(), tz)}. {lot.format === 'sealed_bid' ? 'No one else can see it. You can change or withdraw it until the lot closes.' : 'We will email you if you are outbid.'}</> })
+    // Read the lot back from the server before showing the result, so the current bid and standing are never stale.
+    setBusy(true)
     const fresh = await refreshLotAction(lot.lotNumber)
-    if (fresh) setLot((l: LotData) => ({ ...l, ...fresh }))
+    setBusy(false)
+    if (fresh) { setLot((l: LotData) => ({ ...l, ...fresh })); setNow(fresh.serverNow) }
+    setDone({ title: lot.format === 'sealed_bid' ? 'Your sealed bid is in' : 'Your bid is in', body: <>{money(r.data.amountMinor, currency)} at {dateTime(new Date(), tz)}. {lot.format === 'sealed_bid' ? 'No one else can see it. You can change or withdraw it until the lot closes.' : fresh?.leading ? 'You are the highest bidder. We will email you if you are outbid.' : 'We will email you if you are outbid.'}</> })
     router.refresh()
   }
 
@@ -80,7 +83,8 @@ export function BidPanel({ lot: initial, currency, tz, serverNow, termsVersion }
     setBusy(false); setConfirming(null)
     if (!r.ok) { if (r.needsTerms) setNeedsTerms(true); setError(r.error); key.current = newKey(); return }
     setDone({ title: 'Bought. The lot is yours.', body: <>Order <Link className="ar-textlink" href={`/buyer/orders/${r.data.orderNumber}`}>{r.data.orderNumber}</Link> and invoice <Link className="ar-textlink" href={`/buyer/invoices/${r.data.invoiceNumber}`}>{r.data.invoiceNumber}</Link> are ready. Pay the invoice to release it.</> })
-    setLot((l: LotData) => ({ ...l, status: 'closed' }))
+    const fresh = await refreshLotAction(lot.lotNumber)
+    setLot((l: LotData) => ({ ...l, ...(fresh ?? { status: 'awarded' }) }))
     router.refresh()
   }
 
@@ -154,7 +158,13 @@ export function BidPanel({ lot: initial, currency, tz, serverNow, termsVersion }
         {error ? <div className="ar-notice ar-notice-err" role="alert"><p className="ar-small">{error}</p></div> : null}
 
         {open && needsTerms ? (
-          <TermsGate version={lot.termsVersionRequired || termsVersion} onDone={() => { setNeedsTerms(false); setError(''); router.refresh() }} />
+          <TermsGate version={lot.termsVersionRequired || termsVersion} onDone={async () => {
+            // Read the lot again first, so the terms block (mayBid / bidBlockedReason) is gone when the gate closes.
+            const fresh = await refreshLotAction(lot.lotNumber)
+            setLot((l: LotData) => ({ ...l, ...(fresh ?? {}), termsVersionRequired: null, ...(fresh ? {} : { mayBid: true, bidBlockedReason: null }) }))
+            setNeedsTerms(false); setError('')
+            router.refresh()
+          }} />
         ) : open && !lot.mayBid && lot.bidBlockedReason ? (
           <div className="ar-notice" role="note"><p className="ar-small">{lot.bidBlockedReason}</p>{/overdue/i.test(lot.bidBlockedReason) ? <p className="ar-small" style={{ marginTop: 6 }}><Link className="ar-textlink" href="/buyer/invoices">Go to invoices</Link></p> : null}</div>
         ) : !open ? (

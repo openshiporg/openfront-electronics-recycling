@@ -64,6 +64,7 @@ export async function refreshLotAction(lotNumber: string) {
     myBid: l.myBid,
     mayBid: l.mayBid as boolean,
     bidBlockedReason: l.bidBlockedReason as string | null,
+    termsVersionRequired: (l.termsVersionRequired ?? null) as string | null,
     serverNow: Date.now(),
   }
 }
