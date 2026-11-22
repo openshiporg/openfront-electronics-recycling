@@ -1,4 +1,4 @@
-import { PlatformPage, label, usd, when } from '../../lib/page'
+import { PlatformPage, label, term, usd, when } from '../../lib/page'
 import { ItemDrawer } from '../../lib/forms'
 import { listQuery } from '../../lib/platformRequest'
 import { param, readTabbedList, RowLink, Status, TabbedTable, Td, type SearchParams } from '../../lib/view'
@@ -20,8 +20,8 @@ export default async function LotsPage({ searchParams }: { searchParams: Promise
       { name: 'title', label: 'Title', required: true, wide: true },
       { name: 'saleEvent', label: 'Sale event', type: 'select', relation: true, options: events.map((e: any) => ({ value: e.id, label: e.title })), defaultValue: saleEvent },
       { name: 'category', label: 'Category', type: 'select', relation: true, options: cats.map((c: any) => ({ value: c.id, label: c.name })) },
-      { name: 'format', label: 'Format', type: 'select', required: true, options: ['sealed_bid', 'open_auction', 'fixed_price'].map((v) => ({ value: v, label: label(v) })), defaultValue: 'sealed_bid' },
-      { name: 'bidBasis', label: 'Bid basis', type: 'select', required: true, options: ['lot_total', 'per_line'].map((v) => ({ value: v, label: label(v) })), defaultValue: 'lot_total' },
+      { name: 'format', label: 'Format', type: 'select', required: true, options: ['sealed_bid', 'open_auction', 'fixed_price'].map((v) => ({ value: v, label: term(v) })), defaultValue: 'sealed_bid' },
+      { name: 'bidBasis', label: 'Bid basis', type: 'select', required: true, options: ['lot_total', 'per_line'].map((v) => ({ value: v, label: term(v) })), defaultValue: 'lot_total' },
     ]} />
   )
   const where: Record<string, unknown> = {}
@@ -32,7 +32,7 @@ export default async function LotsPage({ searchParams }: { searchParams: Promise
       {async () => {
         const data = await readTabbedList<any>({ list: 'lots', type: 'Lot', fields: FIELDS, current: status, where, orderBy: [{ closesAt: 'asc' }], page: Number(param(sp, 'page')) || 1, tabs: [
           { value: '', label: 'All', where: {} },
-          ...STATUSES.map((s) => ({ value: s, label: label(s).replace(/^./, (c) => c.toUpperCase()), where: { status: { equals: s } } })),
+          ...STATUSES.map((s) => ({ value: s, label: term(s).replace(/^./, (c) => c.toUpperCase()), where: { status: { equals: s } } })),
         ] })
         return (
           <>
@@ -49,7 +49,7 @@ export default async function LotsPage({ searchParams }: { searchParams: Promise
               <tr key={l.id}>
                 <Td><RowLink href={`/dashboard/platform/lots/${l.id}`}>{l.lotNumber}</RowLink> <span className="text-muted-foreground">{l.title}</span>{l.saleEvent ? <div className="text-xs text-muted-foreground">{l.saleEvent.title}</div> : null}</Td>
                 <Td><Status value={l.status} /></Td>
-                <Td>{label(l.format)}<div className="text-xs text-muted-foreground">{label(l.bidBasis)}</div></Td>
+                <Td>{term(l.format)}<div className="text-xs text-muted-foreground">{label(l.bidBasis)}</div></Td>
                 <Td className="text-right tabular-nums">{l.linesCount}</Td>
                 <Td className="text-right tabular-nums">{l.bidCount}</Td>
                 <Td className="text-right tabular-nums">{l.currentAmountMinor === null && l.format === 'sealed_bid' && ['open', 'scheduled'].includes(l.status) ? 'Sealed' : usd(l.currentAmountMinor)}</Td>

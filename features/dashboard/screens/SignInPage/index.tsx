@@ -13,7 +13,7 @@ export async function SignInPage({ searchParams }: SignInPageProps) {
   const from =
     typeof resolvedSearchParams.from === "string"
       ? resolvedSearchParams.from
-      : "/dashboard";
+      : "/dashboard/platform/today";
 
   return (
     <main className="flex min-h-svh w-full items-center justify-center p-6 md:p-10">

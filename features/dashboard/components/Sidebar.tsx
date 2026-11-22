@@ -36,10 +36,10 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { AdminMeta } from '../hooks/useAdminMeta'
-import { Home, Database, ChevronRight, Package } from 'lucide-react'
+import { ChevronRight, Package } from 'lucide-react'
 import { Logo, LogoIcon } from '@/features/dashboard/components/Logo'
 import { UserProfileClient } from './UserProfileClient'
-import { visibleSidebarLists } from '../lib/sidebarAccess'
+import { canBrowseRecords, visibleSidebarLists } from '../lib/sidebarAccess'
 import { visiblePlatformNav } from '@/features/platform/lib/navigation'
 
 interface User {
@@ -54,9 +54,10 @@ interface User {
 interface SidebarProps {
   adminMeta: AdminMeta | null
   user?: User | null
+  businessName?: string | null
 }
 
-export function Sidebar({ adminMeta, user }: SidebarProps) {
+export function Sidebar({ adminMeta, user, businessName }: SidebarProps) {
   const { isMobile, setOpenMobile } = useSidebar()
   const pathname = usePathname()
 
@@ -84,7 +85,7 @@ export function Sidebar({ adminMeta, user }: SidebarProps) {
   )
 
   // Convert lists to sidebar links format
-  const sidebarLinks = visibleSidebarLists(listsArray as any[], user).map((list: any) => ({
+  const sidebarLinks = (canBrowseRecords(user) ? visibleSidebarLists(listsArray as any[], user) : []).map((list: any) => ({
     title: list.label,
     href: `/dashboard/${list.path}`
   }))
@@ -113,7 +114,7 @@ export function Sidebar({ adminMeta, user }: SidebarProps) {
       <SidebarHeader>
         <SidebarMenuButton asChild>
           <div className="group-has-[[data-collapsible=icon]]/sidebar-wrapper:hidden p-2">
-            <Logo />
+            <Logo name={businessName} />
           </div>
         </SidebarMenuButton>
         <SidebarMenuButton asChild>
@@ -124,20 +125,6 @@ export function Sidebar({ adminMeta, user }: SidebarProps) {
       </SidebarHeader>
 
       <SidebarContent className="no-scrollbar">
-        {/* Dashboard Home Link */}
-        <SidebarGroup>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={isLinkActive('/dashboard')}>
-                <Link href="/dashboard" onClick={() => setOpenMobile(false)}>
-                  <Home className="h-4 w-4" />
-                  <span>Dashboard</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarGroup>
-
         {/* Platform groups, then Records - Collapsible */}
         {dashboardItems.map((dashboardItem) => (
         <SidebarGroup key={dashboardItem.title} className="py-0.5">

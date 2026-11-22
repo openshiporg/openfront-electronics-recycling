@@ -1,11 +1,11 @@
-import { PlatformPage, can, day } from '../../lib/page'
+import { PlatformPage, can, day, storeToday } from '../../lib/page'
 import { OpButton } from '../../lib/forms'
 import { listQuery } from '../../lib/platformRequest'
 import { Empty, Notice, Section } from '../../lib/ui'
 import { param, RowLink, Status, type SearchParams } from '../../lib/view'
 import { CollectForm } from './CollectForm'
 
-const STOP = 'id jobNumber status scheduledDate windowStart windowEnd vehicle contactName contactPhone accessDetails siteAddress hasDataBearing organization { name } site { name addressLine1 city region postalCode hasDock needsLiftgate accessNotes contactName contactPhone } estimateLines { quantity unit notes } driver { id name }'
+const STOP = 'id jobNumber status scheduledDate windowStart windowEnd vehicle contactName contactPhone accessDetails siteAddress hasDataBearing organization { name } site { name addressLine1 city region postalCode hasDock needsLiftgate accessNotes contactName contactPhone } estimateLines { quantity unit notes category { name } } driver { id name }'
 
 /** K5: the driver's stops on a phone; start the route, then collect with the client's signature. */
 export default async function DriverPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
@@ -15,7 +15,7 @@ export default async function DriverPage({ searchParams }: { searchParams: Promi
     <PlatformPage route="/platform/driver" title="My stops" meta="Today and the next two days.">
       {async (staff) => {
         const dispatcher = can(staff, 'canDispatch')
-        const soon = new Date(Date.now() + 3 * 86_400_000).toISOString().slice(0, 10)
+        const soon = storeToday(3)
         const mine = dispatcher && param(sp, 'mine') !== '1' ? {} : { driver: { id: { equals: staff.id } } }
         const r = await listQuery<any>(`query S($where: JobWhereInput!) { jobs(where: $where, orderBy: [{ scheduledDate: asc }, { windowStart: asc }], take: 40) { ${STOP} } }`, { where: jobId ? { id: { equals: jobId } } : { AND: [{ status: { in: ['scheduled', 'en_route'] } }, { scheduledDate: { lt: soon } }, mine] } })
         if (!r.ok) return <Notice tone="alert">{r.error}</Notice>
@@ -35,8 +35,8 @@ export default async function DriverPage({ searchParams }: { searchParams: Promi
                     <div>{day(j.scheduledDate)} · {j.windowStart}–{j.windowEnd}{j.driver ? ` · ${j.driver.name}` : ''}</div>
                     {address ? <a className="underline" href={`https://maps.google.com/?q=${encodeURIComponent(address)}`} target="_blank" rel="noreferrer">{address}</a> : null}
                     <div>{j.site?.contactName || j.contactName} {j.site?.contactPhone || j.contactPhone ? <a className="underline" href={`tel:${j.site?.contactPhone || j.contactPhone}`}>{j.site?.contactPhone || j.contactPhone}</a> : null}</div>
-                    {[j.site?.hasDock ? 'Dock' : '', j.site?.needsLiftgate ? 'Liftgate needed' : '', j.site?.accessNotes || j.accessDetails || ''].filter(Boolean).map((x) => <div key={x} className="text-muted-foreground">{x}</div>)}
-                    {j.estimateLines.length ? <div className="text-muted-foreground">Expect: {j.estimateLines.map((e: any) => `${e.quantity} ${e.unit} ${e.notes ?? ''}`).join('; ')}</div> : null}
+                    {[j.site?.hasDock || j.accessDetails?.hasDock ? 'Dock' : '', j.site?.needsLiftgate || j.accessDetails?.needsLiftgate ? 'Liftgate needed' : '', j.accessDetails?.hours ? `Open ${j.accessDetails.hours}` : '', j.site?.accessNotes || j.accessDetails?.accessNotes || ''].filter(Boolean).map((x) => <div key={x} className="text-muted-foreground">{x}</div>)}
+                    {j.estimateLines.length ? <div className="text-muted-foreground">Expect: {j.estimateLines.map((e: any) => [e.quantity, e.unit === 'units' ? '' : e.unit, e.category?.name ?? '', e.notes ?? ''].filter(Boolean).join(' ')).join('; ')}</div> : null}
                     {j.hasDataBearing ? <div className="font-medium">Data-bearing: seal every container.</div> : null}
                   </div>
                   <div className="mt-3 grid gap-3">

@@ -1,4 +1,4 @@
-import { PlatformPage, can, label, usd } from '../../lib/page'
+import { PlatformPage, can, label, term, usd } from '../../lib/page'
 import { OpButton, OpDrawer, SelectAll } from '../../lib/forms'
 import { Track } from '../../lib/ui'
 import { param, readTabbedList, RowLink, Status, TabbedTable, Td, type SearchParams } from '../../lib/view'
@@ -51,7 +51,7 @@ export default async function AssetsPage({ searchParams }: { searchParams: Promi
             {manage ? (
               <Track wrap>
                 <span className="text-sm text-muted-foreground">With the ticked assets:</span>
-                <OpDrawer selection="assetIds" op="setAssetDisposition" title="Set disposition" trigger="Disposition" fields={[{ name: 'disposition', label: 'Disposition', type: 'select', required: true, options: ['undecided', 'resale', 'parts', 'recycle', 'return'].map((d) => ({ value: d, label: label(d) })) }]} submitLabel="Set" />
+                <OpDrawer selection="assetIds" op="setAssetDisposition" title="Set disposition" trigger="Disposition" fields={[{ name: 'disposition', label: 'Disposition', type: 'select', required: true, options: ['undecided', 'resale', 'parts', 'recycle', 'return'].map((d) => ({ value: d, label: term(d) })) }]} submitLabel="Set" />
                 <OpDrawer selection="assetIds" op="placeAssetHold" title="Place a hold" description="Held assets cannot be sold, shipped or returned until released." trigger="Hold" fields={[{ name: 'reason', label: 'Reason', type: 'textarea', required: true, placeholder: 'Client asked us to keep these for litigation.' }]} submitLabel="Hold" />
                 <OpDrawer selection="assetIds" op="releaseAssetHold" title="Release the hold" trigger="Release hold" fields={[{ name: 'note', label: 'Note', type: 'textarea' }]} submitLabel="Release" />
                 {can(staff, 'canSanitize') ? <RowLink href="/dashboard/platform/sanitization">Record sanitisation</RowLink> : null}

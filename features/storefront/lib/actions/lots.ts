@@ -39,8 +39,8 @@ export async function downloadAction(kind: 'manifest' | 'bidSheet', lotNumber: s
   return run<{ filename: string; mimeType: string; base64: string }>(kind === 'manifest' ? 'downloadLotManifest' : 'downloadBidSheet', { lotNumber })
 }
 
-export async function previewBidSheetAction(lotNumber: string, file: { filename: string; mimeType: string; base64: string }) {
-  return run<{ lines: Array<{ lotLineId: string; lineNumber: number; description: string; quantity: number; unitPriceMinor: number; totalMinor: number }>; problems: string[]; totalMinor: number }>('previewBidSheet', { lotNumber, file })
+export async function checkBidSheetAction(lotNumber: string, file: { filename: string; mimeType: string; base64: string }) {
+  return run<{ lines: Array<{ lotLineId: string; lineNumber: number; description: string; quantity: number; unitPriceMinor: number; totalMinor: number }>; problems: string[]; totalMinor: number }>('checkBidSheet', { lotNumber, file })
 }
 
 export async function placeBidFromSheetAction(lotNumber: string, file: { filename: string; mimeType: string; base64: string }, idempotencyKey: string) {

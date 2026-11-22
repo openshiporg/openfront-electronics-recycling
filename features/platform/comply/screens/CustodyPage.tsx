@@ -1,4 +1,4 @@
-import { PlatformPage, label, when } from '../../lib/page'
+import { PlatformPage, prose, label, term, when } from '../../lib/page'
 import { OpButton } from '../../lib/forms'
 import { param, readTabbedList, RowLink, TabbedTable, Td, type SearchParams } from '../../lib/view'
 
@@ -40,7 +40,7 @@ export default async function CustodyPage({ searchParams }: { searchParams: Prom
             <TabbedTable label="Custody events" tabKey="type" path="/dashboard/platform/custody" params={{ type: group, job: jobId, q }} data={data} empty="No events." head={[{ label: 'When' }, { label: 'Event' }, { label: 'Job' }, { label: 'What' }, { label: 'Who' }, { label: 'Where' }]} row={(e) => (
               <tr key={e.id}>
                 <Td className="whitespace-nowrap tabular-nums">{when(e.occurredAt)}</Td>
-                <Td>{label(e.type)}{e.notes ? <div className="max-w-xs text-xs text-muted-foreground">{e.notes}</div> : null}</Td>
+                <Td>{term(e.type)}{e.notes ? <div className="max-w-xs text-xs text-muted-foreground">{prose(e.notes)}</div> : null}</Td>
                 <Td>{e.job ? <RowLink href={`/dashboard/platform/jobs/${e.job.id}`}>{e.job.jobNumber}</RowLink> : '—'}<div className="text-xs text-muted-foreground">{e.job?.organization?.name}</div></Td>
                 <Td>{e.container ? `Container ${e.container.label}` : ''}{e.asset ? <span className="font-mono text-xs"> {e.asset.assetNumber} {e.asset.serialNumber}</span> : ''}</Td>
                 <Td>{e.actorName}{e.signerName ? <div className="text-xs text-muted-foreground">Signed: {e.signerName}{e.signature ? <> · <a className="underline" href={`/api/files/${e.signature.id}`} target="_blank">signature</a></> : null}</div> : null}</Td>

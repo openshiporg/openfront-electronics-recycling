@@ -1,4 +1,4 @@
-import { PlatformPage, day, label } from '../../lib/page'
+import { PlatformPage, day, label, term } from '../../lib/page'
 import { OpDrawer } from '../../lib/forms'
 import { param, readTabbedList, RowLink, Status, TabbedTable, Td, type SearchParams } from '../../lib/view'
 
@@ -39,7 +39,7 @@ export default async function BuyersPage({ searchParams }: { searchParams: Promi
                 <Td>{day(c.submittedAt)}</Td>
                 <Td className="whitespace-nowrap text-right">
                   {['submitted', 'under_review'].includes(c.status) ? <OpDrawer op="reviewBuyerApplication" fixed={{ companyId: c.id, action: 'approve' }} title={`Approve ${c.legalName}`} description="They can bid as soon as this is saved." trigger="Approve" triggerVariant="primary" fields={[
-                    { name: 'taxStatus', label: 'Tax status', type: 'select', required: true, options: ['taxable', 'exempt_resale', 'export'].map((v) => ({ value: v, label: label(v) })), defaultValue: c.taxStatus },
+                    { name: 'taxStatus', label: 'Tax status', type: 'select', required: true, options: ['taxable', 'exempt_resale', 'export'].map((v) => ({ value: v, label: term(v) })), defaultValue: c.taxStatus },
                     { name: 'spendLimitMinor', label: 'Spend limit', type: 'money', hint: 'Leave empty for no limit.' },
                     { name: 'message', label: 'Message to the buyer', type: 'textarea' },
                   ]} submitLabel="Approve" /> : null}

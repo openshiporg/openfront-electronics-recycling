@@ -1,4 +1,4 @@
-import { PlatformPage, can, day, label, usd, when } from '../../lib/page'
+import { PlatformPage, can, day, label, term, usd, when } from '../../lib/page'
 import { OpButton, OpDrawer } from '../../lib/forms'
 import { listQuery } from '../../lib/platformRequest'
 import { DataTable, Empty, Notice, Section, Track, Td } from '../../lib/ui'
@@ -56,7 +56,7 @@ export default async function SettlementsPage({ searchParams }: { searchParams: 
                       {s.lines.map((l: any) => (
                         <tr key={l.id}>
                           <td className="px-3 py-2 text-sm">{l.description}{l.asset ? <div className="text-xs text-muted-foreground">{l.asset.assetNumber} {l.asset.serialNumber}</div> : null}</td>
-                          <Td>{label(l.kind)}</Td><Td className="text-right tabular-nums">{l.quantity}</Td><Td className="text-right tabular-nums">{usd(l.grossMinor)}</Td>
+                          <Td>{term(l.kind)}</Td><Td className="text-right tabular-nums">{Number(l.quantity)}</Td><Td className="text-right tabular-nums">{usd(l.grossMinor)}</Td>
                           <Td className="text-right tabular-nums">{l.kind === 'service_fee' ? '—' : `${(l.clientShareBps ?? 0) / 100}%`}</Td><Td className="text-right tabular-nums">{usd(l.clientAmountMinor)}</Td>
                           <Td className="text-right">{manage && editable && l.kind === 'adjustment' ? <OpButton op="removeSettlementLine" input={{ lineId: l.id }} label="Remove" variant="danger" confirm="Remove this adjustment?" /> : null}</Td>
                         </tr>
@@ -82,7 +82,7 @@ export default async function SettlementsPage({ searchParams }: { searchParams: 
                 ) : null}
                 {payout && s.status === 'published' && s.netMinor >= 0 ? (
                   <div className="mt-3"><OpDrawer op="recordSettlementPayout" fixed={{ settlementId: s.id }} title={`Record the payout of ${usd(s.netMinor)}`} trigger="Record payout" triggerVariant="primary" fields={[
-                    { name: 'method', label: 'Method', type: 'select', required: true, options: ['cheque', 'ach', 'wire', 'credit'].map((m) => ({ value: m, label: label(m) })) },
+                    { name: 'method', label: 'Method', type: 'select', required: true, options: ['cheque', 'ach', 'wire', 'credit'].map((m) => ({ value: m, label: term(m) })) },
                     { name: 'reference', label: 'Reference', required: true },
                   ]} submitLabel="Record payout" /></div>
                 ) : null}

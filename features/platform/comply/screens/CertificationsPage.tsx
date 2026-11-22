@@ -1,4 +1,4 @@
-import { PlatformPage, can, day } from '../../lib/page'
+import { PlatformPage, can, day, storeToday } from '../../lib/page'
 import { DeleteButton, ItemDrawer, OpDrawer } from '../../lib/forms'
 import { listQuery } from '../../lib/platformRequest'
 import { DataTable, Empty, Notice, Track, Td } from '../../lib/ui'
@@ -14,8 +14,8 @@ export default async function CertificationsPage() {
         if (!r.ok) return <Notice tone="alert">{r.error}</Notice>
         const manage = can(staff, 'canManageSettings', 'canManageDownstream')
         const upload = can(staff, 'canManageSettings', 'canIssueCertificates')
-        const today = new Date().toISOString().slice(0, 10)
-        const soon = new Date(Date.now() + 60 * 86_400_000).toISOString().slice(0, 10)
+        const today = storeToday()
+        const soon = storeToday(60)
         const fields = (c?: any) => [
           { name: 'name', label: 'Certification', type: 'select' as const, required: true, options: NAMES.map((n) => ({ value: n, label: n })), defaultValue: c?.name ?? 'R2v3' },
           { name: 'otherName', label: 'Name (when Other)', defaultValue: c?.otherName },

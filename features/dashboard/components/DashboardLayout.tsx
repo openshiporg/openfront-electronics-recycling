@@ -53,6 +53,7 @@ interface DashboardLayoutProps {
   children: React.ReactNode
   adminMeta?: any
   authenticatedItem?: any
+  businessName?: string | null
 }
 
 function FloatingChatButton() {
@@ -83,10 +84,10 @@ function FloatingChatButton() {
   )
 }
 
-function DashboardLayoutContent({ children, adminMeta, authenticatedItem }: DashboardLayoutProps) {
+function DashboardLayoutContent({ children, adminMeta, authenticatedItem, businessName }: DashboardLayoutProps) {
   return (
     <>
-      <Sidebar adminMeta={adminMeta} user={authenticatedItem} />
+      <Sidebar adminMeta={adminMeta} user={authenticatedItem} businessName={businessName} />
       {/* pb-20 keeps the last rows and fields clear of the floating assistant button */}
       <SidebarInset className="min-w-0 pb-20">
         {children}
@@ -118,7 +119,7 @@ function ChatModeProvider({ children, user }: { children: React.ReactNode; user?
   )
 }
 
-export function DashboardLayout({ children, adminMeta, authenticatedItem }: DashboardLayoutProps) {
+export function DashboardLayout({ children, adminMeta, authenticatedItem, businessName }: DashboardLayoutProps) {
   return (
     <ErrorBoundary>
       <QueryProvider>
@@ -127,7 +128,7 @@ export function DashboardLayout({ children, adminMeta, authenticatedItem }: Dash
             <AiConfigProvider>
               <ChatModeProvider user={authenticatedItem}>
                 <SidebarProvider defaultOpenRight={false}>
-                  <DashboardLayoutContent adminMeta={adminMeta} authenticatedItem={authenticatedItem}>
+                  <DashboardLayoutContent adminMeta={adminMeta} authenticatedItem={authenticatedItem} businessName={businessName}>
                     {children}
                   </DashboardLayoutContent>
                 </SidebarProvider>

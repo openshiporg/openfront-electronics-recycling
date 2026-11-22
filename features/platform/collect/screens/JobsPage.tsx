@@ -1,4 +1,4 @@
-import { PlatformPage, can, day, label } from '../../lib/page'
+import { PlatformPage, can, day, label, term } from '../../lib/page'
 import { OpDrawer } from '../../lib/forms'
 import { listQuery } from '../../lib/platformRequest'
 import { Track } from '../../lib/ui'
@@ -28,7 +28,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
             { name: 'site.accessNotes', label: 'Access notes', type: 'textarea' },
             { name: 'requestedDates', label: 'Preferred dates (one per line, YYYY-MM-DD)', type: 'list', placeholder: '2026-12-02' },
             { name: 'hasDataBearing', label: 'Includes data-bearing devices', type: 'checkbox', defaultValue: true },
-            { name: 'services', label: 'Services', type: 'multiselect', options: ['pickup', 'drop_off', 'data_destruction', 'onsite_shred', 'itad', 'recycling', 'witness_destruction'].map((v) => ({ value: v, label: label(v) })), defaultValue: ['data_destruction', 'recycling'] },
+            { name: 'services', label: 'Services', type: 'multiselect', options: ['pickup', 'drop_off', 'data_destruction', 'onsite_shred', 'itad', 'recycling', 'witness_destruction'].map((v) => ({ value: v, label: term(v) })), defaultValue: ['data_destruction', 'recycling'] },
             { name: 'estimate', label: 'Estimate (quantity | unit | notes)', type: 'lines', columns: [{ key: 'quantity', type: 'number' }, { key: 'unit' }, { key: 'notes' }], placeholder: '40 | each | laptops' },
             { name: 'notes', label: 'Notes', type: 'textarea' },
           ]} submitLabel="Create request" />

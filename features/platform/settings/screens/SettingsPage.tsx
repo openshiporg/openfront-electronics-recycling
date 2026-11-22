@@ -1,4 +1,4 @@
-import { PlatformPage, can, label, usd } from '../../lib/page'
+import { PlatformPage, can, label, term, usd } from '../../lib/page'
 import { ItemDrawer, OpDrawer } from '../../lib/forms'
 import { documentToText } from '../../lib/document'
 import { listQuery, platformQuery } from '../../lib/platformRequest'
@@ -76,7 +76,7 @@ export default async function SettingsPage() {
               { name: 'buyerPremiumBps', label: 'Buyer premium (%)', type: 'percent', defaultValue: s.buyerPremiumBps },
               { name: 'strikesBeforeSuspension', label: 'Defaults before suspension', type: 'number', required: true, defaultValue: s.strikesBeforeSuspension },
             ])}>
-              <Facts items={[['Public lots', label(s.publicLotVisibility)], ['Default format', `${label(s.defaultBidFormat)}, ${label(s.defaultBidBasis)}, ${s.defaultAwardMode === 'manual' ? 'staff award' : 'auto award'}`], ['Soft close', `Bids in the last ${s.softCloseWindowMinutes} min extend by ${s.softCloseExtensionMinutes} min, at most ${s.softCloseMaxExtensions} times`], ['Bid validity', days(s.bidValidityBusinessDays)], ['Buyer premium', pct(s.buyerPremiumBps)], ['Suspension', `after ${s.strikesBeforeSuspension} defaults`]]} />
+              <Facts items={[['Public lots', term(s.publicLotVisibility)], ['Default format', `${label(s.defaultBidFormat)}, ${label(s.defaultBidBasis)}, ${s.defaultAwardMode === 'manual' ? 'staff award' : 'auto award'}`], ['Soft close', `Bids in the last ${s.softCloseWindowMinutes} min extend by ${s.softCloseExtensionMinutes} min, at most ${s.softCloseMaxExtensions} times`], ['Bid validity', days(s.bidValidityBusinessDays)], ['Buyer premium', pct(s.buyerPremiumBps)], ['Suspension', `after ${s.strikesBeforeSuspension} defaults`]]} />
             </Section>
 
             <Section title="Payment, removal and claims" actions={edit('Payment, removal and claims', [

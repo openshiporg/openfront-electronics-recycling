@@ -1,4 +1,4 @@
-import { PlatformPage, can, day } from '../../lib/page'
+import { PlatformPage, can, day, storeToday } from '../../lib/page'
 import { DeleteButton, ItemDrawer, OpDrawer, SaveButton } from '../../lib/forms'
 import { listQuery } from '../../lib/platformRequest'
 import { Notice, Track } from '../../lib/ui'
@@ -16,7 +16,7 @@ export default async function DownstreamPage({ searchParams }: { searchParams: P
         const cats = await listQuery<any>('query { materialCategories(where: { isActive: { equals: true } }, orderBy: [{ name: asc }]) { id name } }')
         if (!cats.ok) return <Notice tone="alert">{cats.error}</Notice>
         const manage = can(staff, 'canManageDownstream')
-        const today = new Date().toISOString().slice(0, 10)
+        const today = storeToday()
         const fields = (v?: any) => [
           { name: 'name', label: 'Name', required: true, defaultValue: v?.name },
           { name: 'contactName', label: 'Contact', defaultValue: v?.contactName }, { name: 'contactEmail', label: 'Contact email', type: 'email' as const, defaultValue: v?.contactEmail },

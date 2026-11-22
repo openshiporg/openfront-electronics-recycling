@@ -4,14 +4,19 @@ import type { RolePermission } from '@/features/keystone/access'
 import { platformNavGroups, platformNavItems } from './navigation'
 import { platformRequest } from './platformRequest'
 import { Notice, PageHeader, Restricted, type Tone } from './ui'
+import { StoreZone } from './forms'
 
 export type StaffRole = Partial<Record<RolePermission, boolean>> & { id?: string; name?: string }
 export type Staff = { id: string; name: string; email: string; role: StaffRole }
 
 const ROLE_FIELDS = 'id name canAccessDashboard canManageSettings canManageUsers canManageBuyers canManageLots canAwardLots canSeeSealedBidAmountsBeforeClose canManageClients canManageJobs canDispatch canCollect canReceive canAuditAssets canSanitize canVerifySanitization canIssueCertificates canManageDownstream canManagePayments canRefund canManageSettlements canViewReports canManageOnboarding'
 
+// One business per deployment: every date on the platform is shown in the store's time zone, named.
+let storeTimeZone: string | undefined
+
 export async function getStaff(): Promise<Staff | null> {
-  const result = await platformRequest<{ authenticatedItem: any }>(`query Me { authenticatedItem { ... on User { id name email role { ${ROLE_FIELDS} } } } }`)
+  const result = await platformRequest<{ authenticatedItem: any; settings: { timezone?: string | null } | null }>(`query Me { authenticatedItem { ... on User { id name email role { ${ROLE_FIELDS} } } } settings: storeSettings(where: { id: 1 }) { timezone } }`)
+  if (result.ok && result.data.settings?.timezone) storeTimeZone = result.data.settings.timezone
   if (!result.ok || !result.data.authenticatedItem?.role) return null
   return result.data.authenticatedItem
 }
@@ -28,18 +33,20 @@ export async function PlatformPage({ route, title, meta, tone, actions, children
   const nav = platformNavItems.find((i) => i.href === route)
   const group = platformNavGroups.find((g) => g.id === nav?.group)
   const breadcrumbs = [
-    { type: 'link' as const, label: 'Dashboard', href: '/dashboard' },
-    ...(group ? [{ type: 'page' as const, label: group.title }] : []),
+    { type: 'link' as const, label: 'Dashboard', href: '/dashboard/platform/today' },
+    ...(group && group.title !== (nav?.title ?? title) ? [{ type: 'page' as const, label: group.title }] : []),
     ...(crumbs.length ? [{ type: 'link' as const, label: nav?.title ?? title, href: `/dashboard${route}` }, ...crumbs.map((c) => (c.href ? { type: 'link' as const, label: c.label, href: c.href } : { type: 'page' as const, label: c.label }))] : [{ type: 'page' as const, label: title }]),
   ]
   const staff = await getStaff()
   const allowed = staff && (!nav || nav.anyOf.some((p) => staff.role[p]))
-  const header = <PageHeader title={title} tone={tone} meta={meta} actions={allowed ? actions : null} />
+  const header = <StoreZone zone={storeTimeZone}><PageHeader title={title} tone={tone} meta={meta} actions={allowed ? actions : null} /></StoreZone>
   return (
     <PageContainer title={title} header={header} breadcrumbs={breadcrumbs}>
-      <div className="flex min-w-0 flex-col gap-6 px-4 pb-24 md:px-6">
-        {!staff ? <Notice tone="alert">Sign in with a staff account to use this page.</Notice> : !allowed ? <Restricted>Your role does not include this page.</Restricted> : await children(staff)}
-      </div>
+      <StoreZone zone={storeTimeZone}>
+        <div className="flex min-w-0 flex-col gap-6 px-4 pb-24 md:px-6">
+          {!staff ? <Notice tone="alert">Sign in with a staff account to use this page.</Notice> : !allowed ? <Restricted>Your role does not include this page.</Restricted> : await children(staff)}
+        </div>
+      </StoreZone>
     </PageContainer>
   )
 }
@@ -51,8 +58,39 @@ export function LoadError({ error }: { error: string }) {
 // ---------------------------------------------------------------- formatting
 
 export const label = (value?: string | null) => (value ? value.replaceAll('_', ' ') : '—')
-export const when = (value?: string | null) => (value ? new Date(value).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—')
-export const day = (value?: string | null) => (value ? new Date(value).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—')
+/** A stored value shown on its own (a status, a fact): words, first letter capital. */
+const WORDS: Record<string, string> = { ach: 'ACH', crt: 'CRT', itad: 'ITAD', r2: 'R2', r2v3: 'R2v3', nist: 'NIST', pdf: 'PDF', csv: 'CSV', id: 'ID', ssd: 'SSD', hdd: 'HDD', lcd: 'LCD', led: 'LED', cod: 'COD', po: 'PO', bol: 'BOL', usd: 'USD' }
+export const term = (value?: string | null) => {
+  const t = label(value)
+  if (t === '—') return t
+  const words = t.split(' ').map((w) => WORDS[w.toLowerCase()] ?? w)
+  const first = words[0] ?? ''
+  words[0] = WORDS[first.toLowerCase()] ? first : first.charAt(0).toUpperCase() + first.slice(1)
+  return words.join(' ')
+}
+/** Free text written by the system may carry stored values ("purge / crypto_erase"); show them as words. */
+export const prose = (text?: string | null) => (text ? text.replace(/\b[a-z]+(?:_[a-z0-9]+)+\b/g, (m) => m.replaceAll('_', ' ')) : '')
+function inZone(value: string, options: Intl.DateTimeFormatOptions) {
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return '—'
+  try { return d.toLocaleString('en-US', { ...options, timeZone: storeTimeZone }) } catch { return d.toLocaleString('en-US', options) }
+}
+/** Date and time in the store time zone, with the zone named: "Nov 26, 1:00 PM EST". */
+export const when = (value?: string | null) => (value ? inZone(value, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }) : '—')
+/** Calendar date in the store time zone. */
+export const day = (value?: string | null) => {
+  if (!value) return '—'
+  // A plain calendar date ("2026-11-22") has no time, so it must not shift across zones.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return new Date(`${value}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+  return inZone(value, { month: 'short', day: 'numeric', year: 'numeric' })
+}
+/** The store time zone, for page notes ("Times are Eastern"). */
+export const zoneName = () => storeTimeZone ?? 'the store time zone'
+/** Today's date (YYYY-MM-DD) at the store, not on the server's clock. Call inside a PlatformPage. */
+export function storeToday(offsetDays = 0) {
+  const d = new Date(Date.now() + offsetDays * 86_400_000)
+  try { return new Intl.DateTimeFormat('en-CA', { timeZone: storeTimeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d) } catch { return d.toISOString().slice(0, 10) }
+}
 export const usd = (minor?: number | null, currency = 'USD') => (minor === null || minor === undefined ? '—' : new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(minor / 100))
 export const weight = (value?: number | string | null, unit = 'lb') => (value === null || value === undefined || value === '' ? '—' : `${Number(value).toLocaleString('en-US', { maximumFractionDigits: 1 })} ${unit}`)
 

@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation'
-import { PlatformPage, can, label, usd, when } from '../../lib/page'
+import { PlatformPage, can, label, term, usd, weight, when } from '../../lib/page'
 import { DeleteButton, ItemDrawer, OpButton, OpDrawer, type FieldSpec } from '../../lib/forms'
 import { listQuery, platformQuery } from '../../lib/platformRequest'
 import { DataTable, Empty, Notice, Readouts, Section, Track, Td } from '../../lib/ui'
@@ -17,7 +17,7 @@ const LOT = `id lotNumber title slug status format bidBasis awardMode descriptio
   awards { id status amountMinor isBelowReserve overrideReason awardedAt company { legalName } order { id orderNumber status } }`
 
 const FORMATS = ['sealed_bid', 'open_auction', 'fixed_price']
-const o = (values: string[]) => values.map((v) => ({ value: v, label: label(v) }))
+const o = (values: string[]) => values.map((v) => ({ value: v, label: term(v) }))
 
 /** S8 lot editor, S10 open-lot actions, S11 bid board, S12 staff bid, S13 award, S14 relist / runner-up. */
 export default async function LotDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -26,7 +26,7 @@ export default async function LotDetailPage({ params }: { params: Promise<{ id: 
   if (read.ok && !read.data.lot) notFound()
   const lot = read.ok ? read.data.lot : null
   return (
-    <PlatformPage route="/platform/lots" title={lot ? `${lot.lotNumber} · ${lot.title}` : 'Lot'} tone={lot ? undefined : 'alert'} crumbs={[{ label: lot?.lotNumber ?? 'Lot' }]} meta={lot ? `${label(lot.format)}, ${label(lot.bidBasis)}${lot.saleEvent ? ` · ${lot.saleEvent.title}` : ''}` : undefined}>
+    <PlatformPage route="/platform/lots" title={lot ? `${lot.lotNumber} · ${lot.title}` : 'Lot'} tone={lot ? undefined : 'alert'} crumbs={[{ label: lot?.lotNumber ?? 'Lot' }]} meta={lot ? `${term(lot.format)}, ${label(lot.bidBasis)}${lot.saleEvent ? ` · ${lot.saleEvent.title}` : ''}` : undefined}>
       {async (staff) => {
         if (!read.ok) return <Notice tone="alert">{read.error}</Notice>
         const { saleEvents, materialCategories, facilities, buyerCompanies } = read.data
@@ -44,7 +44,7 @@ export default async function LotDetailPage({ params }: { params: Promise<{ id: 
           { name: 'facility', label: 'Pickup facility', type: 'select', relation: true, options: facilities.map((f: any) => ({ value: f.id, label: f.name })), defaultValue: lot.facility?.id },
           { name: 'closesAt', label: 'Closes', type: 'datetime', defaultValue: lot.closesAt },
           { name: 'palletCount', label: 'Pallets', type: 'number', defaultValue: lot.palletCount },
-          { name: 'weight', label: 'Weight', type: 'number', defaultValue: lot.weight },
+          { name: 'weight', label: 'Weight (lb)', type: 'decimal', defaultValue: lot.weight },
           { name: 'dimensions', label: 'Dimensions', defaultValue: lot.dimensions },
           { name: 'shippingTerms', label: 'Shipping', type: 'select', required: true, options: o(['buyer_arranged', 'seller_quoted', 'pickup_only']), defaultValue: lot.shippingTerms },
           { name: 'warrantyDays', label: 'Warranty days', type: 'number', defaultValue: lot.warrantyDays },
@@ -83,7 +83,7 @@ export default async function LotDetailPage({ params }: { params: Promise<{ id: 
         return (
           <>
             <Readouts items={[
-              { label: 'Status', value: label(lot.status) },
+              { label: 'Status', value: term(lot.status) },
               { label: 'Bids', value: lot.bidCount },
               { label: lot.format === 'sealed_bid' && live ? 'High bid' : 'Current', value: lot.currentAmountMinor === null && lot.format === 'sealed_bid' && live ? 'Sealed' : usd(lot.currentAmountMinor) },
               { label: 'Closes', value: when(lot.closesAt) },
@@ -105,8 +105,8 @@ export default async function LotDetailPage({ params }: { params: Promise<{ id: 
 
             <Section title="Details" actions={manage && lot.status !== 'cancelled' && lot.status !== 'completed' ? <ItemDrawer listKey="Lot" id={lot.id} title="Edit details" trigger="Edit details" fields={details} /> : null}>
               <Facts items={[
-                ['Category', lot.category?.name], ['Facility', lot.facility?.name], ['Shipping', label(lot.shippingTerms)],
-                ['Pallets', lot.palletCount], ['Weight', lot.weight], ['Dimensions', lot.dimensions],
+                ['Category', lot.category?.name], ['Facility', lot.facility?.name], ['Shipping', term(lot.shippingTerms)],
+                ['Pallets', lot.palletCount], ['Weight', weight(lot.weight)], ['Dimensions', lot.dimensions],
                 ['Warranty', lot.warrantyDays ? `${lot.warrantyDays} days` : 'None'], ['Export', lot.exportAllowed ? 'Allowed' : 'Domestic only'], ['Condition', lot.conditionSummary],
               ]} />
               {documentToText(lot.description?.document) ? <p className="mt-3 whitespace-pre-line text-sm">{documentToText(lot.description?.document)}</p> : null}
@@ -114,7 +114,7 @@ export default async function LotDetailPage({ params }: { params: Promise<{ id: 
 
             <Section title="Format and prices" actions={manage && draft ? <ItemDrawer listKey="Lot" id={lot.id} title="Format and prices" description="These are fixed once the lot is published." trigger="Edit terms" fields={terms} /> : null}>
               <Facts items={[
-                ['Format', label(lot.format)], ['Bid basis', label(lot.bidBasis)], ['Award', label(lot.awardMode)], ['Opens', when(lot.opensAt)],
+                ['Format', term(lot.format)], ['Bid basis', term(lot.bidBasis)], ['Award', term(lot.awardMode)], ['Opens', when(lot.opensAt)],
                 ['Opening bid', usd(lot.openingBidMinor)], ['Increment', usd(lot.bidIncrementMinor)], ['Reserve', usd(lot.reserveMinor)], ['Fixed price', usd(lot.fixedPriceMinor)],
                 ['Original close', when(lot.originalClosesAt)], ['Relisted from', lot.relistedFrom ? <RowLink href={`/dashboard/platform/lots/${lot.relistedFrom.id}`}>{lot.relistedFrom.lotNumber}</RowLink> : ''],
               ]} />
@@ -174,7 +174,7 @@ export default async function LotDetailPage({ params }: { params: Promise<{ id: 
                       <Td>{x.company}{x.strikes ? <div className="text-xs text-red-600">{x.strikes} strike{x.strikes === 1 ? '' : 's'}</div> : null}{x.companyStatus !== 'approved' ? <div className="text-xs text-muted-foreground">{label(x.companyStatus)}</div> : null}</Td>
                       <Td className="text-right tabular-nums">{x.lineCount ? `${x.lineCount} lines · ` : ''}{usd(x.amountMinor)}</Td>
                       <Td><Status value={x.status} /></Td>
-                      <Td>{label(x.source)}{x.staffNote ? <div className="text-xs text-muted-foreground">{x.placedBy}: {x.staffNote}</div> : null}</Td>
+                      <Td>{term(x.source)}{x.staffNote ? <div className="text-xs text-muted-foreground">{x.placedBy}: {x.staffNote}</div> : null}</Td>
                       <Td>{when(x.submittedAt)}</Td>
                       <Td className="whitespace-nowrap text-right">
                         {award && lot.status === 'closed' && lot.bidBasis === 'lot_total' && x.status === 'active' ? (

@@ -1,4 +1,4 @@
-import { PlatformPage, can } from '../../lib/page'
+import { PlatformPage, can, storeToday } from '../../lib/page'
 import { OpButton, OpDrawer } from '../../lib/forms'
 import { listQuery, platformQuery } from '../../lib/platformRequest'
 import { Empty, Notice, Section, Track } from '../../lib/ui'
@@ -20,7 +20,7 @@ export default async function DockPage({ searchParams }: { searchParams: Promise
         const facilities = opts.data.facilities
         if (!facilities.length) return <Empty>Add a facility under Settings first.</Empty>
         const facilityId = param(sp, 'facility') || facilities[0].id
-        const today = new Date().toISOString().slice(0, 10)
+        const today = storeToday()
         const date = /^\d{4}-\d{2}-\d{2}$/.test(param(sp, 'date')) ? param(sp, 'date') : today
         const dayRead = await platformQuery<any>('dockDay', { facilityId, date })
         if (!dayRead.ok) return <Notice tone="alert">{dayRead.error}</Notice>
@@ -80,10 +80,15 @@ export default async function DockPage({ searchParams }: { searchParams: Promise
                 <ul className="grid gap-1 text-sm">{unbooked.map((o: any) => <li key={o.id}><RowLink href={`/dashboard/platform/orders/${o.id}`}>{o.orderNumber}</RowLink> · {o.company?.legalName}</li>)}</ul>
               </Section>
             ) : null}
-            <p className="text-xs text-muted-foreground">Times are {tz}. Slots are {d.facility.slotMinutes} minutes; {d.facility.perWindow} truck{d.facility.perWindow === 1 ? '' : 's'} per slot.</p>
+            <p className="text-xs text-muted-foreground">Times are {tzWords(tz)}. Slots are {d.facility.slotMinutes} minutes; {d.facility.perWindow} truck{d.facility.perWindow === 1 ? '' : 's'} per slot.</p>
           </>
         )
       }}
     </PlatformPage>
   )
+}
+
+/** "Eastern Standard Time" rather than "America/New_York". */
+function tzWords(tz: string) {
+  try { return new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'long' }).formatToParts(new Date()).find((p) => p.type === 'timeZoneName')?.value ?? tz } catch { return tz }
 }
