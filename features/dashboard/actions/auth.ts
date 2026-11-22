@@ -157,7 +157,12 @@ export async function getAuthenticatedUser() {
           email
           name
           role {
-            canAccessDashboard
+            id
+            name
+            canAccessDashboard canManageSettings canManageUsers canManageBuyers canManageLots canAwardLots
+            canSeeSealedBidAmountsBeforeClose canManageClients canManageJobs canDispatch canCollect canReceive
+            canAuditAssets canSanitize canVerifySanitization canIssueCertificates canManageDownstream
+            canManagePayments canRefund canManageSettlements canViewReports canManageOnboarding
           }
         }
       }

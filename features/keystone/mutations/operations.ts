@@ -2,6 +2,7 @@ import type { RolePermission } from '../access'
 import { command, requireStaff, toJson, type Ctx } from '../lib/core'
 import * as buyers from '../domain/buyers'
 import * as documents from '../domain/documents'
+import * as files from '../domain/files'
 import * as jobs from '../domain/jobs'
 import * as lots from '../domain/lots'
 import * as money from '../domain/money'
@@ -158,6 +159,7 @@ export const OPERATIONS: Record<string, Op> = {
   shipOutbound: m(['canManageDownstream'], (c, i) => process.shipOutbound(c, i)),
   confirmOutboundReceipt: m(['canManageDownstream'], (c, i) => process.confirmOutboundReceipt(c, i)),
   massBalanceReport: q(['canManageDownstream', 'canIssueCertificates', 'canViewReports'], (c, i) => reports.massBalanceReport(c, i ?? {})),
+  attachFile: m(['canManageLots', 'canManageSettings', 'canIssueCertificates', 'canManageDownstream'], (c, i) => files.attachFile(c, i)),
   staffDownloadFile: m(['canIssueCertificates', 'canManageSettlements', 'canManageClients', 'canViewReports'], (c, i) => documents.staffDownloadFile(c, i)),
 
   // ---------------- platform: Money

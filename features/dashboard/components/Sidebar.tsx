@@ -40,14 +40,15 @@ import { Home, Database, ChevronRight, Package } from 'lucide-react'
 import { Logo, LogoIcon } from '@/features/dashboard/components/Logo'
 import { UserProfileClient } from './UserProfileClient'
 import { visibleSidebarLists } from '../lib/sidebarAccess'
+import { visiblePlatformNav } from '@/features/platform/lib/navigation'
 
 interface User {
   id: string;
   email: string;
   name?: string;
-  role?: {
+  role?: ({
     canAccessDashboard?: boolean;
-  };
+  } & Record<string, boolean | string | null | undefined>) | null;
 }
 
 interface SidebarProps {
@@ -88,10 +89,19 @@ export function Sidebar({ adminMeta, user }: SidebarProps) {
     href: `/dashboard/${list.path}`
   }))
 
-  // Dashboard items for the collapsible menu
+  // Platform pages, grouped as in the dissertation §4.10 and filtered by role.
+  const platformGroups = visiblePlatformNav(user?.role as any).map((group) => ({
+    title: group.title,
+    icon: group.icon,
+    items: group.items.map((item) => ({ title: item.title, href: item.href })),
+    isActive: group.items.some((item) => isLinkActive(item.href)),
+  }))
+
+  // Every Keystone list stays reachable (the [listKey] fallback), collapsed at the end.
   const dashboardItems = [
+    ...platformGroups,
     {
-      title: "Models",
+      title: "Records",
       items: sidebarLinks,
       isActive: false,
       icon: Package,
@@ -128,16 +138,15 @@ export function Sidebar({ adminMeta, user }: SidebarProps) {
           </SidebarMenu>
         </SidebarGroup>
 
-        {/* Models Dropdown - Collapsible */}
+        {/* Platform groups, then Records - Collapsible */}
         {dashboardItems.map((dashboardItem) => (
-        <SidebarGroup key={dashboardItem.title}>
+        <SidebarGroup key={dashboardItem.title} className="py-0.5">
           <SidebarMenu>
-            <SidebarGroupLabel>{dashboardItem.title}</SidebarGroupLabel>
             <div className="max-h-full overflow-y-auto group-has-[[data-collapsible=icon]]/sidebar-wrapper:hidden">
               <Collapsible
                 key={dashboardItem.title}
                 asChild
-                defaultOpen={dashboardItem.isActive}
+                defaultOpen={dashboardItem.isActive || dashboardItem.title === 'Today'}
                 className="group/collapsible"
               >
                 <SidebarMenuItem>
