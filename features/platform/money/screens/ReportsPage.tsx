@@ -1,4 +1,4 @@
-import { PlatformPage, can, day, label, usd } from '../../lib/page'
+import { PlatformPage, can, day, label, term, usd } from '../../lib/page'
 import { OpButton } from '../../lib/forms'
 import { listQuery, platformQuery } from '../../lib/platformRequest'
 import { DataTable, Empty, Notice, Readouts, Section, Track, Td } from '../../lib/ui'
@@ -38,7 +38,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
                     </div>
                     {sales.data.rows.length ? (
                       <DataTable label="Awards" head={[{ label: 'Awarded' }, { label: 'Lot' }, { label: 'Buyer' }, { label: 'Format' }, { label: 'Award', className: 'text-right' }, { label: 'Order' }, { label: 'Paid', className: 'text-right' }]}>
-                        {sales.data.rows.map((r: any, i: number) => <tr key={i}><Td>{day(r.awardedAt)}</Td><Td>{r.lotNumber} <span className="text-muted-foreground">{r.title}</span></Td><Td>{r.buyer}</Td><Td>{label(r.format)}</Td><Td className="text-right tabular-nums">{usd(r.amountMinor)}{r.belowReserve ? <div className="text-xs text-muted-foreground">below reserve</div> : null}</Td><Td>{r.orderNumber} <span className="text-xs text-muted-foreground">{label(r.orderStatus)}</span></Td><Td className="text-right tabular-nums">{usd(r.paidMinor)}</Td></tr>)}
+                        {sales.data.rows.map((r: any, i: number) => <tr key={i}><Td>{day(r.awardedAt)}</Td><Td>{r.lotNumber} <span className="text-muted-foreground">{r.title}</span></Td><Td>{r.buyer}</Td><Td>{term(r.format)}</Td><Td className="text-right tabular-nums">{usd(r.amountMinor)}{r.belowReserve ? <div className="text-xs text-muted-foreground">below reserve</div> : null}</Td><Td>{r.orderNumber} <span className="text-xs text-muted-foreground">{label(r.orderStatus)}</span></Td><Td className="text-right tabular-nums">{usd(r.paidMinor)}</Td></tr>)}
                       </DataTable>
                     ) : <Empty>No awards in this period.</Empty>}
                   </div>

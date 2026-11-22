@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition, type FormEvent, type ReactNode } from 'react'
+import { createContext, useContext, useState, useTransition, type FormEvent, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { textToDocument } from './document'
 import { Label } from '@/components/ui/label'
@@ -16,6 +16,41 @@ import { deleteItem, readOperation, runOperation, saveItem, type ActionResult } 
  * inline form, labelled fields, and buttons for explicit state transitions. Every save
  * refreshes the page's server data on success and shows the server's refusal otherwise.
  */
+
+/*
+ * Date-and-time fields are typed and shown in the store's time zone (the one every page
+ * names), whatever zone the phone or laptop is set to.
+ */
+const ZoneContext = createContext<string | undefined>(undefined)
+export function StoreZone({ zone, children }: { zone?: string; children: ReactNode }) {
+  return <ZoneContext.Provider value={zone}>{children}</ZoneContext.Provider>
+}
+function zoneParts(date: Date, zone?: string) {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).formatToParts(date)
+  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value)
+  return { y: get('year'), mo: get('month'), d: get('day'), h: get('hour') % 24, mi: get('minute'), s: get('second') }
+}
+/** "2026-11-22T14:30" read as wall time in the zone, to an instant. */
+export function zonedToIso(local: string, zone?: string) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(local)
+  if (!m) return new Date(local).toISOString()
+  const wall = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5])
+  let t = wall
+  for (let i = 0; i < 2; i++) {
+    const p = zoneParts(new Date(t), zone)
+    t = wall - (Date.UTC(p.y, p.mo - 1, p.d, p.h, p.mi) - t)
+  }
+  return new Date(t).toISOString()
+}
+function isoToZoned(value: string, zone?: string) {
+  const d = new Date(value); if (Number.isNaN(d.getTime())) return ''
+  const p = zoneParts(d, zone)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${p.y}-${pad(p.mo)}-${pad(p.d)}T${pad(p.h)}:${pad(p.mi)}`
+}
+function zoneAbbr(zone?: string) {
+  try { return new Intl.DateTimeFormat('en-US', { timeZone: zone, timeZoneName: 'short' }).formatToParts(new Date()).find((p) => p.type === 'timeZoneName')?.value } catch { return undefined }
+}
 
 export type FieldSpec = {
   name: string
@@ -48,7 +83,7 @@ async function fileInput(file: File) {
 }
 
 /** Turns FormData into typed input using the field specs. */
-export async function collect(form: FormData, fields: FieldSpec[], forUpdate = false) {
+export async function collect(form: FormData, fields: FieldSpec[], forUpdate = false, zone?: string) {
   const out: Record<string, unknown> = {}
   for (const f of fields) {
     const raw = form.get(f.name)
@@ -57,7 +92,7 @@ export async function collect(form: FormData, fields: FieldSpec[], forUpdate = f
       case 'number': out[f.name] = raw === '' || raw === null ? null : Number(raw); break
       case 'money': out[f.name] = raw === '' || raw === null ? null : Math.round(Number(raw) * 100); break
       case 'percent': out[f.name] = raw === '' || raw === null ? null : Math.round(Number(raw) * 100); break
-      case 'datetime': out[f.name] = raw ? new Date(String(raw)).toISOString() : null; break
+      case 'datetime': out[f.name] = raw ? zonedToIso(String(raw), zone) : null; break
       case 'file': {
         const file = form.get(f.name)
         out[f.name] = file instanceof File && file.size ? await fileInput(file) : null
@@ -110,17 +145,13 @@ function nest(flat: Record<string, unknown>) {
   return out
 }
 
-function initial(f: FieldSpec): string {
+function initialValue(f: FieldSpec, zone?: string): string {
   const dv = f.defaultValue
   if (dv === null || dv === undefined) return ''
   if (f.type === 'money') return toDollars(Number(dv))
   if (f.type === 'percent') return (Number(dv) / 100).toString()
   if (f.type === 'date') return String(dv).slice(0, 10)
-  if (f.type === 'datetime') {
-    const d = new Date(String(dv)); if (Number.isNaN(d.getTime())) return ''
-    const pad = (n: number) => String(n).padStart(2, '0')
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-  }
+  if (f.type === 'datetime') return isoToZoned(String(dv), zone)
   if (f.type === 'json') return typeof dv === 'string' ? dv : JSON.stringify(dv, null, 2)
   if (f.type === 'list') return Array.isArray(dv) ? dv.join('\n') : String(dv)
   return String(dv)
@@ -149,6 +180,9 @@ export function Field({ id, label, children, wide = false, hint }: { id: string;
 }
 
 export function Inputs({ fields, prefix }: { fields: FieldSpec[]; prefix: string }) {
+  const zone = useContext(ZoneContext)
+  const abbr = zoneAbbr(zone)
+  const initial = (f: FieldSpec) => initialValue(f, zone)
   return (
     <>
       {fields.map((f) => {
@@ -192,7 +226,7 @@ export function Inputs({ fields, prefix }: { fields: FieldSpec[]; prefix: string
           const step = f.type === 'money' || f.type === 'percent' || f.type === 'decimal' ? '0.01' : f.type === 'number' ? 'any' : undefined
           control = <Input id={id} name={f.name} type={type} step={step} inputMode={step ? 'decimal' : undefined} required={f.required} defaultValue={initial(f)} placeholder={f.placeholder} className={f.type === 'money' ? 'font-mono' : undefined} />
         }
-        return <Field key={f.name} id={id} label={f.label} wide={f.wide || f.type === 'textarea' || f.type === 'lines' || f.type === 'json' || f.type === 'document'} hint={f.hint}>{control}</Field>
+        return <Field key={f.name} id={id} label={f.type === 'datetime' && abbr ? `${f.label} (${abbr})` : f.label} wide={f.wide || f.type === 'textarea' || f.type === 'lines' || f.type === 'json' || f.type === 'document'} hint={f.hint}>{control}</Field>
       })}
     </>
   )
@@ -233,9 +267,10 @@ type OpProps = {
 
 /** Inline form that runs one domain command. */
 export function OpForm({ op, fields, fixed, submitLabel = 'Save', onResult, className, idempotent }: OpProps & { className?: string; idempotent?: boolean }) {
+  const zone = useContext(ZoneContext)
   const [key] = useState(() => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : String(Date.now())))
   const { submit, pending, error } = useSubmit(async (form) => {
-    const values = await collect(form, fields)
+    const values = await collect(form, fields, false, zone)
     const input = { ...(fixed ?? {}), ...values, ...(idempotent ? { idempotencyKey: key } : {}) }
     return runOperation(op, input)
   }, onResult)
@@ -251,11 +286,12 @@ export function OpForm({ op, fields, fixed, submitLabel = 'Save', onResult, clas
 /** Drawer that runs one domain command. */
 export function OpDrawer({ trigger, title, description, triggerVariant = 'raised', selection, onResultHref, ...props }: OpProps & { trigger: ReactNode; title: string; description?: string; triggerVariant?: PillVariant; idempotent?: boolean; selection?: string; onResultHref?: string }) {
   const router = useRouter()
+  const zone = useContext(ZoneContext)
   const [open, setOpen] = useState(false)
   const [key, setKey] = useState(() => String(Date.now()) + Math.random().toString(36).slice(2))
   const [picked, setPicked] = useState<string[]>([])
   const { submit, pending, error } = useSubmit(async (form) => {
-    const values = await collect(form, props.fields)
+    const values = await collect(form, props.fields, false, zone)
     const input = { ...(props.fixed ?? {}), ...values, ...(selection ? { [selection]: picked } : {}), ...(props.idempotent ? { idempotencyKey: key } : {}) }
     return props.read ? readOperation(props.op, input) : runOperation(props.op, input)
   }, (result) => {
@@ -297,9 +333,10 @@ export function ItemDrawer({ listKey, id, fields, fixed, trigger, title, descrip
   onResultHref?: string
 }) {
   const router = useRouter()
+  const zone = useContext(ZoneContext)
   const [open, setOpen] = useState(false)
   const { submit, pending, error } = useSubmit(async (form) => {
-    const values = await collect(form, fields, Boolean(id))
+    const values = await collect(form, fields, Boolean(id), zone)
     return saveItem(listKey, id ?? null, { ...(fixed ?? {}), ...values })
   }, (result) => {
     setOpen(false)

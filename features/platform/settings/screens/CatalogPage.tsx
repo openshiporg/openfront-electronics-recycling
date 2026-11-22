@@ -1,4 +1,4 @@
-import { PlatformPage, can, label, usd } from '../../lib/page'
+import { PlatformPage, can, label, term, usd } from '../../lib/page'
 import { DeleteButton, ItemDrawer } from '../../lib/forms'
 import { listQuery } from '../../lib/platformRequest'
 import { DataTable, Empty, Notice, Section, StatusTabs, Td } from '../../lib/ui'
@@ -26,7 +26,7 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
         const catOpts = categories.map((c: any) => ({ value: c.id, label: c.name }))
         const catFields = (c: any = {}) => [
           { name: 'name', label: 'Name', required: true, defaultValue: c.name }, { name: 'slug', label: 'Slug', required: true, defaultValue: c.slug, placeholder: 'laptops' },
-          { name: 'kind', label: 'Kind', type: 'select' as const, options: ['equipment', 'component', 'commodity'].map((v) => ({ value: v, label: label(v) })), defaultValue: c.kind ?? 'equipment' },
+          { name: 'kind', label: 'Kind', type: 'select' as const, options: ['equipment', 'component', 'commodity'].map((v) => ({ value: v, label: term(v) })), defaultValue: c.kind ?? 'equipment' },
           { name: 'parent', label: 'Parent', type: 'select' as const, relation: true, options: catOpts.filter((o: any) => o.value !== c.id), defaultValue: c.parent?.id },
           { name: 'r2Category', label: 'R2 category', defaultValue: c.r2Category, hint: 'For example FM (focus material) or data-bearing device.' },
           { name: 'sortOrder', label: 'Order', type: 'number' as const, defaultValue: c.sortOrder ?? 0 },
@@ -56,7 +56,7 @@ export default async function CatalogPage({ searchParams }: { searchParams: Prom
             {tab === 'categories' ? (
               <Section title="Categories" count={categories.length} actions={manage ? <ItemDrawer listKey="MaterialCategory" title="Add a category" trigger="Add category" triggerVariant="primary" fields={catFields()} /> : null}>
                 {categories.length ? <DataTable label="Categories" head={[{ label: 'Category' }, { label: 'Kind' }, { label: 'R2' }, { label: 'Data-bearing' }, { label: 'Active' }, { label: '' }]}>
-                  {categories.map((c: any) => <tr key={c.id}><Td><span className="font-medium">{c.name}</span>{c.parent ? <span className="text-xs text-muted-foreground"> in {c.parent.name}</span> : null}<div className="font-mono text-xs text-muted-foreground">{c.slug}</div></Td><Td>{label(c.kind)}</Td><Td>{[c.r2Category, c.isFocusMaterial ? 'focus material' : ''].filter(Boolean).join(' · ') || '—'}</Td><Td>{c.dataBearingDefault ? 'Yes' : 'No'}</Td><Td>{c.isActive ? 'Yes' : 'No'}</Td>
+                  {categories.map((c: any) => <tr key={c.id}><Td><span className="font-medium">{c.name}</span>{c.parent ? <span className="text-xs text-muted-foreground"> in {c.parent.name}</span> : null}<div className="font-mono text-xs text-muted-foreground">{c.slug}</div></Td><Td>{term(c.kind)}</Td><Td>{[c.r2Category, c.isFocusMaterial ? 'focus material' : ''].filter(Boolean).join(' · ') || '—'}</Td><Td>{c.dataBearingDefault ? 'Yes' : 'No'}</Td><Td>{c.isActive ? 'Yes' : 'No'}</Td>
                     <Td className="text-right">{manage ? <ItemDrawer listKey="MaterialCategory" id={c.id} title={`Edit ${c.name}`} trigger="Edit" fields={catFields(c)} /> : null}</Td></tr>)}
                 </DataTable> : <Empty>No categories.</Empty>}
               </Section>

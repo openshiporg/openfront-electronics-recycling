@@ -1,4 +1,4 @@
-import { PlatformPage, can, day, label, usd, when } from '../../lib/page'
+import { PlatformPage, can, day, label, term, usd, when } from '../../lib/page'
 import { OpButton, OpDrawer } from '../../lib/forms'
 import { listQuery } from '../../lib/platformRequest'
 import { DataTable, Empty, Notice, Section, Track, Td } from '../../lib/ui'
@@ -33,7 +33,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
               <Track wrap>
                 <OpDrawer op="recordOfflinePayment" title="Record a payment received" description="A cheque, cash, or a transfer the customer did not report. Recorded as received." trigger="Record a payment" triggerVariant="primary" fields={[
                   { name: 'invoiceId', label: 'Invoice', type: 'select', required: true, options: invoices.map((i: any) => ({ value: i.id, label: `${i.invoiceNumber} · ${who(i)} · ${usd(i.balanceMinor)} due` })), defaultValue: invoices.length === 1 ? invoices[0].id : undefined },
-                  { name: 'method', label: 'Method', type: 'select', required: true, options: ['cheque', 'wire', 'ach', 'cash'].map((m) => ({ value: m, label: label(m) })), defaultValue: 'cheque' },
+                  { name: 'method', label: 'Method', type: 'select', required: true, options: ['cheque', 'wire', 'ach', 'cash'].map((m) => ({ value: m, label: term(m) })), defaultValue: 'cheque' },
                   { name: 'amountMinor', label: 'Amount', type: 'money', required: true, defaultValue: invoices.length === 1 ? invoices[0].balanceMinor : undefined },
                   { name: 'reference', label: 'Cheque or bank reference', required: true },
                   { name: 'paidOn', label: 'Received on', type: 'date', required: true, defaultValue: new Date().toISOString().slice(0, 10) },
@@ -62,7 +62,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
             <TabbedTable label="Payments" path="/dashboard/platform/payments" params={{ status, invoice: invoiceNumber }} data={data} empty={<Empty>No payments here.</Empty>} head={[{ label: 'Invoice' }, { label: 'Method' }, { label: 'Amount', className: 'text-right' }, { label: 'Status' }, { label: 'Reference' }, { label: 'Paid on' }, { label: '' }]} row={(p) => (
               <tr key={p.id}>
                 <Td>{p.invoice?.invoiceNumber}<div className="text-xs text-muted-foreground">{who(p.invoice)}</div></Td>
-                <Td>{label(p.method)}</Td>
+                <Td>{term(p.method)}</Td>
                 <Td className="text-right tabular-nums">{usd(p.amountMinor)}{p.refundedMinor ? <div className="text-xs text-muted-foreground">{usd(p.refundedMinor)} refunded</div> : null}</Td>
                 <Td><Status value={p.status} />{p.rejectionReason ? <div className="max-w-xs text-xs text-muted-foreground">{p.rejectionReason}</div> : null}{p.confirmedBy ? <div className="text-xs text-muted-foreground">by {p.confirmedBy.name}</div> : null}</Td>
                 <Td className="max-w-[12rem] break-words">{p.bankReference || p.providerReference || '—'}</Td>

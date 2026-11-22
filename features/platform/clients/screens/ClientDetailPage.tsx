@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation'
-import { PlatformPage, can, day, label, usd } from '../../lib/page'
+import { PlatformPage, can, day, label, term, usd } from '../../lib/page'
 import { DeleteButton, ItemDrawer, SaveButton } from '../../lib/forms'
 import { listQuery } from '../../lib/platformRequest'
 import { DataTable, Empty, Notice, Section, Track, Td } from '../../lib/ui'
@@ -63,7 +63,7 @@ export default async function ClientDetailPage({ params }: { params: Promise<{ i
                 <DataTable label="Portal users" head={[{ label: 'Name' }, { label: 'Role' }, { label: 'Terms' }, { label: 'Active' }, { label: '' }]}>
                   {o.users.map((u: any) => <tr key={u.id}>
                     <Td>{u.name}<div className="text-xs text-muted-foreground">{u.email}{u.phone ? ` · ${u.phone}` : ''}</div></Td>
-                    <Td>{label(u.clientRole)}</Td><Td>{u.acceptedTermsVersion ? `v${u.acceptedTermsVersion}` : 'Not yet'}</Td><Td>{u.isActive ? 'Yes' : 'No'}</Td>
+                    <Td>{term(u.clientRole)}</Td><Td>{u.acceptedTermsVersion ? `v${u.acceptedTermsVersion}` : 'Not yet'}</Td><Td>{u.isActive ? 'Yes' : 'No'}</Td>
                     <Td className="whitespace-nowrap text-right">{manage ? <>
                       <SaveButton listKey="User" id={u.id} data={{ clientRole: u.clientRole === 'admin' ? 'viewer' : 'admin' }} label={u.clientRole === 'admin' ? 'Make viewer' : 'Make admin'} />
                       <ItemDrawer listKey="User" id={u.id} title={`New password for ${u.name}`} trigger="Set password" submitLabel="Set" fields={[{ name: 'password', label: 'New password', type: 'password', required: true, hint: 'At least 8 characters. Tell them directly.' }]} />

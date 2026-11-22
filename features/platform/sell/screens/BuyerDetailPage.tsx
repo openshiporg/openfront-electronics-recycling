@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation'
-import { PlatformPage, can, day, label, usd, when } from '../../lib/page'
+import { PlatformPage, can, day, label, term, usd, when } from '../../lib/page'
 import { ItemDrawer, OpButton, OpDrawer, SaveButton } from '../../lib/forms'
 import { listQuery } from '../../lib/platformRequest'
 import { DataTable, Empty, Notice, Readouts, Section, Track, Td } from '../../lib/ui'
@@ -20,7 +20,7 @@ const Q = `query Buyer($id: ID!) {
   materialCategories(where: { isActive: { equals: true } }, orderBy: [{ name: asc }]) { id name }
 }`
 
-const o = (v: string[]) => v.map((x) => ({ value: x, label: label(x) }))
+const o = (v: string[]) => v.map((x) => ({ value: x, label: term(x) }))
 
 /** S2 record, S3 users, S4 category interests, S5 documents, plus the application review (S1). */
 export default async function BuyerDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -36,7 +36,7 @@ export default async function BuyerDetailPage({ params }: { params: Promise<{ id
         const reviewing = ['submitted', 'under_review', 'needs_info'].includes(c.status)
         return (
           <>
-            <Readouts items={[{ label: 'Status', value: label(c.status) }, { label: 'Tax', value: label(c.taxStatus) }, { label: 'Spend limit', value: c.spendLimitMinor === null ? 'None' : usd(c.spendLimitMinor) }, { label: 'Strikes', value: c.strikes, tone: c.strikes ? 'wait' : undefined }, { label: 'Terms', value: c.termsVersionAccepted || 'Not accepted' }]} />
+            <Readouts items={[{ label: 'Status', value: term(c.status) }, { label: 'Tax', value: term(c.taxStatus) }, { label: 'Spend limit', value: c.spendLimitMinor === null ? 'None' : usd(c.spendLimitMinor) }, { label: 'Strikes', value: c.strikes, tone: c.strikes ? 'wait' : undefined }, { label: 'Terms', value: c.termsVersionAccepted || 'Not accepted' }]} />
             {manage ? (
               <Track wrap label="Buyer actions">
                 {c.status === 'submitted' ? <OpButton op="reviewBuyerApplication" input={{ companyId: c.id, action: 'open' }} label="Start review" /> : null}
@@ -65,7 +65,7 @@ export default async function BuyerDetailPage({ params }: { params: Promise<{ id
             ]} /> : null}>
               <Facts items={[
                 ['Trading as', c.tradingName], ['Address', [c.addressLine1, c.addressLine2, c.city, c.region, c.postalCode, c.countryCode].filter(Boolean).join(', ')], ['Phone', c.phone],
-                ['Website', c.website], ['Tax ID', c.taxId], ['Business type', label(c.businessType)], ['Monthly spend', label(c.monthlySpendBand)],
+                ['Website', c.website], ['Tax ID', c.taxId], ['Business type', term(c.businessType)], ['Monthly spend', term(c.monthlySpendBand)],
                 ['Ships to', Array.isArray(c.destinationCountries) ? c.destinationCountries.join(', ') : ''], ['Submitted', day(c.submittedAt)],
                 ['Approved', c.approvedAt ? `${day(c.approvedAt)}${c.approvedBy ? ` by ${c.approvedBy.name}` : ''}` : ''], ['Internal notes', c.internalNotes],
               ]} />
@@ -106,7 +106,7 @@ export default async function BuyerDetailPage({ params }: { params: Promise<{ id
                   {c.users.map((u: any) => (
                     <tr key={u.id}>
                       <Td>{u.name}<div className="text-xs text-muted-foreground">{u.email}{u.phone ? ` · ${u.phone}` : ''}</div></Td>
-                      <Td>{label(u.buyerRole)}</Td>
+                      <Td>{term(u.buyerRole)}</Td>
                       <Td>{u.acceptedTermsVersion || '—'}</Td>
                       <Td>{u.isActive ? 'Yes' : 'No'}</Td>
                       <Td className="whitespace-nowrap text-right">{manage ? <>

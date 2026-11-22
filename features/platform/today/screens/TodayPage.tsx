@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { PlatformPage, usd, when, label } from '../../lib/page'
+import { PlatformPage, usd, when, label, term } from '../../lib/page'
 import { platformQuery } from '../../lib/platformRequest'
 import { DataTable, Empty, Notice, Readouts, Section, Td } from '../../lib/ui'
 
@@ -37,7 +37,7 @@ export default async function TodayPage() {
                     {s.closingSoon.map((l) => (
                       <tr key={l.id}>
                         <Td><Link className="font-medium hover:underline" href={`/dashboard/platform/lots/${l.id}`}>{l.lotNumber}</Link> <span className="text-muted-foreground">{l.title}</span></Td>
-                        <Td>{label(l.format)}</Td>
+                        <Td>{term(l.format)}</Td>
                         <Td className="text-right tabular-nums">{l.bidCount}</Td>
                         <Td>{when(l.closesAt)}</Td>
                       </tr>

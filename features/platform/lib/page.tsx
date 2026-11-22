@@ -4,6 +4,7 @@ import type { RolePermission } from '@/features/keystone/access'
 import { platformNavGroups, platformNavItems } from './navigation'
 import { platformRequest } from './platformRequest'
 import { Notice, PageHeader, Restricted, type Tone } from './ui'
+import { StoreZone } from './forms'
 
 export type StaffRole = Partial<Record<RolePermission, boolean>> & { id?: string; name?: string }
 export type Staff = { id: string; name: string; email: string; role: StaffRole }
@@ -38,12 +39,14 @@ export async function PlatformPage({ route, title, meta, tone, actions, children
   ]
   const staff = await getStaff()
   const allowed = staff && (!nav || nav.anyOf.some((p) => staff.role[p]))
-  const header = <PageHeader title={title} tone={tone} meta={meta} actions={allowed ? actions : null} />
+  const header = <StoreZone zone={storeTimeZone}><PageHeader title={title} tone={tone} meta={meta} actions={allowed ? actions : null} /></StoreZone>
   return (
     <PageContainer title={title} header={header} breadcrumbs={breadcrumbs}>
-      <div className="flex min-w-0 flex-col gap-6 px-4 pb-24 md:px-6">
-        {!staff ? <Notice tone="alert">Sign in with a staff account to use this page.</Notice> : !allowed ? <Restricted>Your role does not include this page.</Restricted> : await children(staff)}
-      </div>
+      <StoreZone zone={storeTimeZone}>
+        <div className="flex min-w-0 flex-col gap-6 px-4 pb-24 md:px-6">
+          {!staff ? <Notice tone="alert">Sign in with a staff account to use this page.</Notice> : !allowed ? <Restricted>Your role does not include this page.</Restricted> : await children(staff)}
+        </div>
+      </StoreZone>
     </PageContainer>
   )
 }
@@ -55,6 +58,8 @@ export function LoadError({ error }: { error: string }) {
 // ---------------------------------------------------------------- formatting
 
 export const label = (value?: string | null) => (value ? value.replaceAll('_', ' ') : '—')
+/** A stored value shown on its own (a status, a fact): words, first letter capital. */
+export const term = (value?: string | null) => { const t = label(value); return t === '—' ? t : t.charAt(0).toUpperCase() + t.slice(1) }
 /** Free text written by the system may carry stored values ("purge / crypto_erase"); show them as words. */
 export const prose = (text?: string | null) => (text ? text.replace(/\b[a-z]+(?:_[a-z0-9]+)+\b/g, (m) => m.replaceAll('_', ' ')) : '')
 function inZone(value: string, options: Intl.DateTimeFormatOptions) {

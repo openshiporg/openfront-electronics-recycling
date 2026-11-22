@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { DataTable, Empty, Notice, Pager, StatusCell, StatusTabs, Td } from './ui'
-import { label, tabHref, toneOf } from './page'
+import { label, tabHref, term, toneOf } from './page'
 import { listQuery } from './platformRequest'
 
 /*
@@ -59,7 +59,7 @@ export function TabbedTable<T>({ path, params, data, head, row, empty, tabKey = 
 }
 
 export function Status({ value }: { value?: string | null }) {
-  return <StatusCell tone={toneOf(value)}>{label(value)}</StatusCell>
+  return <StatusCell tone={toneOf(value)}>{term(value)}</StatusCell>
 }
 
 export function RowLink({ href, children }: { href: string; children: ReactNode }) {

@@ -1,4 +1,4 @@
-import { PlatformPage, can, day, label, usd, when } from '../../lib/page'
+import { PlatformPage, can, day, label, term, usd, when } from '../../lib/page'
 import { OpButton, OpDrawer } from '../../lib/forms'
 import { listQuery } from '../../lib/platformRequest'
 import { Notice, Section, Track } from '../../lib/ui'
@@ -21,7 +21,7 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
         const record = manage ? (
           <OpDrawer op="openClaim" title="Record a claim" description="For a claim the buyer phoned or emailed in. Photos are kept with the claim." trigger="Record a claim" triggerVariant="primary" fixed={orderId ? { orderId } : undefined} fields={[
             ...(orderId ? [] : [{ name: 'orderId', label: 'Order', type: 'select' as const, required: true, options: orders.map((o: any) => ({ value: o.id, label: `${o.orderNumber} · ${o.company?.legalName}${o.claimWindowEndsAt ? ` (window ends ${day(o.claimWindowEndsAt)})` : ''}` })) }]),
-            { name: 'reason', label: 'Reason', type: 'select', required: true, options: REASONS.map((r) => ({ value: r, label: label(r) })) },
+            { name: 'reason', label: 'Reason', type: 'select', required: true, options: REASONS.map((r) => ({ value: r, label: term(r) })) },
             { name: 'requestedAmountMinor', label: 'Amount asked for', type: 'money' },
             { name: 'description', label: 'What the buyer reported', type: 'textarea', required: true },
             { name: 'lines', label: 'Lines (line number | quantity | note)', type: 'lines', columns: [{ key: 'lineNumber', type: 'number' }, { key: 'quantity', type: 'number' }, { key: 'note' }], placeholder: '3 | 2 | two units do not power on' },
@@ -44,9 +44,9 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
             {c ? (
               <Section title={<>{c.claimNumber} <Status value={c.status} /></>} actions={<RowLink href="/dashboard/platform/claims">Close</RowLink>}>
                 <Facts items={[
-                  ['Buyer', c.company?.legalName], ['Order', <RowLink key="o" href={`/dashboard/platform/orders/${c.order.id}`}>{c.order.orderNumber}</RowLink>], ['Reason', label(c.reason)],
+                  ['Buyer', c.company?.legalName], ['Order', <RowLink key="o" href={`/dashboard/platform/orders/${c.order.id}`}>{c.order.orderNumber}</RowLink>], ['Reason', term(c.reason)],
                   ['Asked for', usd(c.requestedAmountMinor)], ['Recorded', `${when(c.createdAt)}${c.openedBy ? ` by ${c.openedBy.name}` : ''}`], ['Claim window', day(c.order.claimWindowEndsAt)],
-                  ['Resolution', label(c.resolution)], ['Approved', usd(c.approvedAmountMinor)], ['Decided', c.resolvedAt ? `${when(c.resolvedAt)} by ${c.resolvedBy?.name ?? ''}` : ''],
+                  ['Resolution', term(c.resolution)], ['Approved', usd(c.approvedAmountMinor)], ['Decided', c.resolvedAt ? `${when(c.resolvedAt)} by ${c.resolvedBy?.name ?? ''}` : ''],
                   ['Refund', c.refund ? `${usd(c.refund.amountMinor)} · ${label(c.refund.status)}` : ''],
                 ]} />
                 <p className="mt-3 whitespace-pre-line text-sm">{c.description}</p>
@@ -57,7 +57,7 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
                   <Track wrap className="mt-4">
                     {c.status === 'submitted' ? <OpButton op="resolveClaim" input={{ claimId: c.id, action: 'review' }} label="Start review" /> : null}
                     {['submitted', 'under_review'].includes(c.status) ? <OpDrawer op="resolveClaim" idempotent fixed={{ claimId: c.id, action: 'approve' }} title="Approve and refund" description="The refund goes back on the payment you choose (card refunds go through the provider)." trigger="Approve" triggerVariant="primary" fields={[
-                      { name: 'resolution', label: 'Resolution', type: 'select', required: true, options: ['refund', 'partial_refund', 'return_and_refund'].map((v) => ({ value: v, label: label(v) })), defaultValue: 'partial_refund' },
+                      { name: 'resolution', label: 'Resolution', type: 'select', required: true, options: ['refund', 'partial_refund', 'return_and_refund'].map((v) => ({ value: v, label: term(v) })), defaultValue: 'partial_refund' },
                       { name: 'approvedAmountMinor', label: 'Refund amount', type: 'money', required: true, defaultValue: c.requestedAmountMinor },
                       { name: 'paymentId', label: 'Refund against', type: 'select', options: payments.map((p: any) => ({ value: p.id, label: `${label(p.method)} ${usd(p.amountMinor - p.refundedMinor)} left` })) },
                       { name: 'note', label: 'Note to the buyer', type: 'textarea' },
@@ -70,7 +70,7 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
             <TabbedTable label="Claims" path="/dashboard/platform/claims" params={{ status, order: orderId }} data={data} empty="No claims here." head={[{ label: 'Claim' }, { label: 'Buyer' }, { label: 'Reason' }, { label: 'Status' }, { label: 'Asked', className: 'text-right' }, { label: 'Approved', className: 'text-right' }, { label: 'Recorded' }]} row={(x) => (
               <tr key={x.id}>
                 <Td><RowLink href={`/dashboard/platform/claims?claim=${x.id}&status=${status}`}>{x.claimNumber}</RowLink><div className="text-xs text-muted-foreground">{x.order?.orderNumber}</div></Td>
-                <Td>{x.company?.legalName}</Td><Td>{label(x.reason)}</Td><Td><Status value={x.status} /></Td>
+                <Td>{x.company?.legalName}</Td><Td>{term(x.reason)}</Td><Td><Status value={x.status} /></Td>
                 <Td className="text-right tabular-nums">{usd(x.requestedAmountMinor)}</Td><Td className="text-right tabular-nums">{usd(x.approvedAmountMinor)}</Td><Td>{day(x.createdAt)}</Td>
               </tr>
             )} />

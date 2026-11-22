@@ -1,4 +1,4 @@
-import { PlatformPage, label, when } from '../../lib/page'
+import { PlatformPage, label, term, when } from '../../lib/page'
 import { OpButton, OpDrawer } from '../../lib/forms'
 import { listQuery } from '../../lib/platformRequest'
 import { DataTable, Empty, Notice, Section, Track, Td } from '../../lib/ui'
@@ -27,7 +27,7 @@ export default async function ManifestImportsPage({ searchParams }: { searchPara
         const imp = detail?.ok ? detail.data.manifestImport : null
         const data = await readTabbedList<any>({ list: 'manifestImports', type: 'ManifestImport', fields: 'id originalFilename status purpose rowCount validCount errorCount createdAt uploadedBy { name } lot { id lotNumber } targetJob { id jobNumber }', current: status, page: Number(param(sp, 'page')) || 1, tabs: [
           { value: '', label: 'All', where: {} },
-          ...['uploaded', 'mapped', 'validated', 'committed', 'discarded'].map((s) => ({ value: s, label: label(s).replace(/^./, (c) => c.toUpperCase()), where: { status: { equals: s } } })),
+          ...['uploaded', 'mapped', 'validated', 'committed', 'discarded'].map((s) => ({ value: s, label: term(s).replace(/^./, (c) => c.toUpperCase()), where: { status: { equals: s } } })),
         ] })
         const rows: any[] = Array.isArray(imp?.rows) ? imp.rows : []
         return (

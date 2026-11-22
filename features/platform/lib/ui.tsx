@@ -84,7 +84,7 @@ export function Readouts({ items }: { items: Array<{ label: string; value: React
       {items.map((item) => (
         <div key={item.label} className="min-w-0 bg-background px-4 py-2.5 sm:min-w-[8.5rem] sm:flex-1">
           <dt className="truncate text-xs text-muted-foreground">{item.tone ? <StatusDot tone={item.tone} className="mr-1.5" /> : null}{item.label}</dt>
-          <dd className="mt-0.5 truncate text-lg font-semibold leading-tight tabular-nums">{item.value}</dd>
+          <dd className="mt-0.5 break-words text-lg font-semibold leading-tight tabular-nums">{item.value}</dd>
         </div>
       ))}
     </dl>

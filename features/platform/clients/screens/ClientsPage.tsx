@@ -1,4 +1,4 @@
-import { PlatformPage, can, label } from '../../lib/page'
+import { PlatformPage, can, label, term } from '../../lib/page'
 import { ItemDrawer } from '../../lib/forms'
 import { Track, Td } from '../../lib/ui'
 import { param, readTabbedList, RowLink, Status, TabbedTable, type SearchParams } from '../../lib/view'
@@ -32,7 +32,7 @@ export default async function ClientsPage({ searchParams }: { searchParams: Prom
             <TabbedTable label="Clients" path="/dashboard/platform/clients" params={{ status, q }} data={data} empty="No clients here." head={[{ label: 'Client' }, { label: 'Status' }, { label: 'Pricing' }, { label: 'Sites', className: 'text-right' }, { label: 'Users', className: 'text-right' }, { label: 'Jobs', className: 'text-right' }, { label: 'Account manager' }]} row={(o) => (
               <tr key={o.id}>
                 <Td><RowLink href={`/dashboard/platform/clients/${o.id}`}>{o.name}</RowLink><div className="text-xs text-muted-foreground">{[o.industry, [o.city, o.region].filter(Boolean).join(', ')].filter(Boolean).join(' · ')}</div></Td>
-                <Td><Status value={o.status} /></Td><Td>{label(o.defaultPricingModel)}</Td>
+                <Td><Status value={o.status} /></Td><Td>{term(o.defaultPricingModel)}</Td>
                 <Td className="text-right tabular-nums">{o.sitesCount}</Td><Td className="text-right tabular-nums">{o.usersCount}</Td><Td className="text-right tabular-nums">{o.jobsCount}</Td>
                 <Td>{o.accountManager?.name ?? '—'}</Td>
               </tr>

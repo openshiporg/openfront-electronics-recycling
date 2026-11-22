@@ -1,4 +1,4 @@
-import { PlatformPage, can, label, when } from '../../lib/page'
+import { PlatformPage, can, label, term, when } from '../../lib/page'
 import { OpDrawer, SelectAll } from '../../lib/forms'
 import { listQuery } from '../../lib/platformRequest'
 import { DataTable, Empty, Notice, Section, Td } from '../../lib/ui'
@@ -29,8 +29,8 @@ export default async function SanitizationPage({ searchParams }: { searchParams:
         return (
           <>
             <Section title="Waiting for sanitisation" count={r.data.pending.length} actions={sanitize && r.data.pending.length ? <OpDrawer selection="assetIds" op="recordSanitization" title="Record sanitisation" description="For the ticked assets. Destroy covers shred, crush and disintegrate." trigger="Record for ticked" triggerVariant="primary" fields={[
-              { name: 'method', label: 'Method', type: 'select', required: true, options: ['clear', 'purge', 'destroy'].map((m) => ({ value: m, label: label(m) })), defaultValue: 'purge' },
-              { name: 'technique', label: 'Technique', type: 'select', required: true, options: TECHNIQUES.map((t) => ({ value: t, label: label(t) })), defaultValue: 'crypto_erase' },
+              { name: 'method', label: 'Method', type: 'select', required: true, options: ['clear', 'purge', 'destroy'].map((m) => ({ value: m, label: term(m) })), defaultValue: 'purge' },
+              { name: 'technique', label: 'Technique', type: 'select', required: true, options: TECHNIQUES.map((t) => ({ value: t, label: term(t) })), defaultValue: 'crypto_erase' },
               { name: 'standard', label: 'Standard', defaultValue: 'NIST SP 800-88 Rev. 1' },
               { name: 'tool', label: 'Tool' }, { name: 'toolVersion', label: 'Tool version' }, { name: 'reportReference', label: 'Report reference' },
               { name: 'result', label: 'Result', type: 'select', required: true, options: [{ value: 'passed', label: 'Passed' }, { value: 'failed', label: 'Failed' }], defaultValue: 'passed' },
@@ -50,7 +50,7 @@ export default async function SanitizationPage({ searchParams }: { searchParams:
             <TabbedTable label="Sanitisation records" tabKey="result" path="/dashboard/platform/sanitization" params={{ result }} data={data} empty="No records." head={[{ label: 'Asset' }, { label: 'Method' }, { label: 'Result' }, { label: 'By' }, { label: 'When' }, { label: 'Verified' }]} row={(x) => (
               <tr key={x.id}>
                 <Td><span className="font-mono text-xs">{x.asset?.assetNumber}</span> {x.asset?.serialNumber}{x.asset?.job ? <div className="text-xs text-muted-foreground">{x.asset.job.jobNumber}</div> : null}</Td>
-                <Td>{label(x.method)} · {label(x.technique)}<div className="text-xs text-muted-foreground">{[x.standard, x.tool, x.toolVersion, x.reportReference].filter(Boolean).join(' · ')}</div>{x.reportFile ? <a className="text-xs underline" href={`/api/files/${x.reportFile.id}`} target="_blank">{x.reportFile.filename}</a> : null}</Td>
+                <Td>{term(x.method)} · {label(x.technique)}<div className="text-xs text-muted-foreground">{[x.standard, x.tool, x.toolVersion, x.reportReference].filter(Boolean).join(' · ')}</div>{x.reportFile ? <a className="text-xs underline" href={`/api/files/${x.reportFile.id}`} target="_blank">{x.reportFile.filename}</a> : null}</Td>
                 <Td><Status value={x.result} />{x.failureReason ? <div className="text-xs text-red-600">{x.failureReason}</div> : null}</Td>
                 <Td>{x.operator?.name ?? '—'}{x.witnessName ? <div className="text-xs text-muted-foreground">Witness {x.witnessName}</div> : null}</Td>
                 <Td>{when(x.completedAt || x.createdAt)}</Td>
