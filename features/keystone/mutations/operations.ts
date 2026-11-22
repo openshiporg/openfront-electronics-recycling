@@ -100,6 +100,7 @@ export const OPERATIONS: Record<string, Op> = {
   uploadManifest: m(SELL, (c, i) => sheets.uploadManifest(c, i)),
   mapManifest: m(SELL, (c, i) => sheets.mapManifest(c, i)),
   validateManifest: m(SELL, (c, i) => sheets.validateManifest(c, i)),
+  editManifestRow: m(SELL, (c, i) => sheets.editManifestRow(c, i)),
   commitManifest: m(SELL, (c, i) => sheets.commitManifest(c, i)),
   discardManifest: m(SELL, (c, i) => sheets.discardManifest(c, i)),
   staffLotManifest: m(['canManageLots', 'canAwardLots', 'canViewReports'], (c, i) => sheets.staffLotManifest(c, i)),

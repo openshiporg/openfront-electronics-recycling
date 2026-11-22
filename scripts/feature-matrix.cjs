@@ -81,7 +81,7 @@ const ROWS = [
   ['S3', '[Sell] Buyer users: add, remove, admin or bidder', [], ['User'], 'buyers/[id]', 'Create with `kind: buyer` and `buyerCompany.connect`; a buyer manager cannot create staff or client users.'],
   ['S4', '[Sell] Buyer category interests', [], ['BuyerCompany'], 'buyers/[id]', 'Field `categoriesOfInterest` (set).'],
   ['S5', '[Sell] Buyer documents: accept, reject, expiry', ['reviewBuyerDocument'], [], 'buyers/[id]'],
-  ['S6', '[Sell] Manifest import: upload, map, preview, commit', ['uploadManifest', 'mapManifest', 'validateManifest', 'commitManifest', 'discardManifest'], [], 'manifest-imports'],
+  ['S6', '[Sell] Manifest import: upload, map, preview, correct a row, commit', ['uploadManifest', 'mapManifest', 'validateManifest', 'editManifestRow', 'commitManifest', 'discardManifest'], [], 'manifest-imports'],
   ['S7', '[Sell] Build a lot from inventory', ['createLotFromAssets'], [], 'inventory'],
   ['S8', '[Sell] Lot editor: details, photos, format, basis, reserve, terms', ['attachFile'], ['Lot', 'LotLine', 'LotImage'], 'lots, lots/[id]', 'Photos: `attachFile { target: "lot_image", id: lotId, file, caption }`.'],
   ['S9', '[Sell] Sale events: create, add lots, publish, announce', ['publishSaleEvent', 'publishLot'], ['SaleEvent'], 'sale-events'],

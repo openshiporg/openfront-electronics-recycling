@@ -184,6 +184,22 @@ test('manifest rows with errors are marked with the reason; blank rows are skipp
   assert.match(out[2].errors[0], /zero/)
 })
 
+test('a manifest row corrected by hand is re-checked with the same rules and marked edited', () => {
+  const [bad] = sheets.applyManifestMapping(['Make', 'Model', 'Qty'], [['Lenovo', 'T480', 'ten']], { manufacturer: 0, model: 1, quantity: 2 }, 7)
+  assert.equal(bad.valid, false)
+  const fixed = sheets.correctManifestRow(bad, { quantity: '10', cosmeticGrade: 'C' })
+  assert.equal(fixed.valid, true)
+  assert.equal(fixed.edited, true)
+  assert.equal(fixed.rowNumber, 7)
+  assert.deepEqual([fixed.line.manufacturer, fixed.line.model, fixed.line.quantity, fixed.line.cosmeticGrade], ['Lenovo', 'T480', 10, 'C'])
+  assert.match(sheets.correctManifestRow(bad, { quantity: 'eleven' }).errors[0], /Quantity "eleven" is not a whole number/)
+  assert.match(sheets.correctManifestRow(fixed, { quantity: '0' }).errors[0], /zero/)
+  const blank = sheets.correctManifestRow(fixed, { manufacturer: '', model: '', description: '' })
+  assert.match(blank.errors[0], /no description, model or manufacturer/)
+  const serials = sheets.correctManifestRow(bad, { quantity: '', serials: 'A1, A2;A3' })
+  assert.deepEqual([serials.line.serials, serials.line.quantity, serials.valid], [['A1', 'A2', 'A3'], 3, true])
+})
+
 test('export neutralises formula injection', () => {
   assert.equal(sheets.neutralizeCell('=HYPERLINK("http://x")'), `'=HYPERLINK("http://x")`)
   assert.equal(sheets.neutralizeCell('+1'), `'+1`)

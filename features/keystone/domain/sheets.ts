@@ -1,5 +1,5 @@
 import { audit, fail, inTransaction, lockRow, nextNumber, requireBuyer, str, type Ctx } from '../lib/core'
-import { applyManifestMapping, detectHeaderRow, MANIFEST_FIELDS, parseMoneyCell, proposeMapping, specKeysOf, specLabel, STORED_ROW_CAP } from '../lib/rules/sheets'
+import { applyManifestMapping, correctManifestRow, detectHeaderRow, type ManifestRow, MANIFEST_FIELDS, parseMoneyCell, proposeMapping, specKeysOf, specLabel, STORED_ROW_CAP } from '../lib/rules/sheets'
 import { asDownload, decodeUpload, getSettings, readFileBytes, storeFile, type FileInput } from '../lib/services'
 import * as XLSX from 'xlsx'
 import { readWorkbook, writeWorkbook, XLSX_MIME } from '../lib/spreadsheet'
@@ -64,11 +64,35 @@ export async function validateManifest(context: Ctx, args: { importId: string })
   const sheet = readWorkbook(file.bytes, imp.sheetName)
   const headerRow = imp.headerRow ?? 0
   const headers = sheet.rows[headerRow] ?? []
-  const rows = applyManifestMapping(headers, sheet.rows.slice(headerRow + 1), (imp.mapping as any) ?? {}, headerRow + 2)
-  if (!rows.length) fail('The sheet has no data rows under the header.')
+  const fresh = applyManifestMapping(headers, sheet.rows.slice(headerRow + 1), (imp.mapping as any) ?? {}, headerRow + 2)
+  if (!fresh.length) fail('The sheet has no data rows under the header.')
+  // Rows corrected by hand survive a re-check of the file (same row number); mapManifest clears them.
+  const edited = new Map((((imp.rows as any[]) ?? []) as ManifestRow[]).filter((r) => r.edited).map((r) => [r.rowNumber, r]))
+  const rows = fresh.map((r) => edited.get(r.rowNumber) ?? r)
   if (rows.length > STORED_ROW_CAP) fail(`A manifest can have at most ${STORED_ROW_CAP.toLocaleString()} lines. Split the file.`)
   const valid = rows.filter((r) => r.valid).length
   return context.prisma.manifestImport.update({ where: { id: imp.id }, data: { status: 'validated', rows: rows as any, rowCount: rows.length, validCount: valid, errorCount: rows.length - valid } })
+}
+
+/** S6: correct one row in the preview by hand. It is re-checked with the file rules and kept marked as edited. */
+export async function editManifestRow(context: Ctx, args: { importId: string; rowNumber: number; line: Record<string, unknown> }) {
+  const staffId = context.session!.itemId
+  return inTransaction(context, async (tx) => {
+    await lockRow(tx, 'ManifestImport', str(args.importId, 60)) || fail('Import not found.')
+    const imp = await tx.manifestImport.findUnique({ where: { id: str(args.importId, 60) } })
+    if (imp.status !== 'validated') fail(imp.status === 'committed' || imp.status === 'discarded' ? `This import is ${imp.status}.` : 'Check the rows first, then correct one.')
+    if (!args.line || typeof args.line !== 'object' || Array.isArray(args.line)) fail('Send the corrected fields.')
+    const rows = ((imp.rows as any[]) ?? []) as ManifestRow[]
+    const index = rows.findIndex((r) => r.rowNumber === Number(args.rowNumber))
+    if (index < 0) fail(`Row ${args.rowNumber} is not in this import.`)
+    const before = rows[index]
+    const after = correctManifestRow(before, args.line)
+    const next = rows.map((r, i) => (i === index ? after : r))
+    const valid = next.filter((r) => r.valid).length
+    const saved = await tx.manifestImport.update({ where: { id: imp.id }, data: { rows: next as any, validCount: valid, errorCount: next.length - valid } })
+    await audit(tx, { actorId: staffId, action: 'manifest.row_corrected', entityType: 'ManifestImport', entityId: imp.id, before: { rowNumber: before.rowNumber, valid: before.valid, errors: before.errors, line: before.line }, after: { rowNumber: after.rowNumber, valid: after.valid, errors: after.errors, line: after.line } })
+    return { importId: saved.id, row: after, validCount: saved.validCount, errorCount: saved.errorCount }
+  })
 }
 
 /** Commit valid rows: to a new or existing draft lot, or as assets on a job. */

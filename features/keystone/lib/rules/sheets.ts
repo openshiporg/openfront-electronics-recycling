@@ -89,6 +89,8 @@ export type ManifestRow = {
   rowNumber: number
   valid: boolean
   errors: string[]
+  /** Set when staff corrected the row by hand in the preview (editManifestRow). */
+  edited?: boolean
   line: {
     lineNumber: number | null
     category: string
@@ -109,6 +111,56 @@ export type ManifestRow = {
 
 const cell = (row: unknown[], index: number | undefined) => (index == null || index < 0 ? '' : String(row[index] ?? '').trim())
 
+const NO_IDENTITY = 'The row has no description, model or manufacturer.'
+
+/** The checks every manifest line must pass, from a file or corrected by hand. */
+export function manifestLineErrors(line: { quantity: number; description: string; model: string; manufacturer: string }, quantityText?: string) {
+  const errors: string[] = []
+  if (!Number.isInteger(line.quantity) || line.quantity < 0) errors.push(`Quantity "${quantityText ?? line.quantity}" is not a whole number.`)
+  else if (line.quantity === 0) errors.push('Quantity is zero.')
+  if (!line.description && !line.model && !line.manufacturer) errors.push(NO_IDENTITY)
+  return errors
+}
+
+const text = (v: unknown, max = 500) => String(v ?? '').trim().slice(0, max)
+
+/**
+ * A row corrected by hand in the preview: the typed fields replace the row's, anything not sent
+ * is kept, and the row is checked with the same rules as a row read from the file.
+ */
+export function correctManifestRow(row: ManifestRow, input: Record<string, unknown>): ManifestRow {
+  const before = row.line
+  const has = (k: string) => Object.prototype.hasOwnProperty.call(input, k)
+  const pick = (k: keyof ManifestRow['line'], max?: number) => (has(k) ? text(input[k], max) : (before[k] as string))
+  const serials = has('serials')
+    ? (Array.isArray(input.serials) ? input.serials : String(input.serials ?? '').split(/[,;\n]+/)).map((s) => text(s, 120)).filter(Boolean)
+    : before.serials
+  const qtyText = has('quantity') ? text(input.quantity, 40).replace(/,/g, '') : ''
+  const quantity = has('quantity') ? (qtyText ? Number(qtyText) : serials.length || 1) : before.quantity
+  const unitRaw = has('unit') ? text(input.unit, 20).toLowerCase() : before.unit
+  const unit = ['lb', 'lbs', 'pound', 'pounds'].includes(unitRaw) ? 'lb' : ['kg', 'kgs'].includes(unitRaw) ? 'kg' : 'each'
+  const manufacturer = pick('manufacturer', 120)
+  const model = pick('model', 120)
+  const typedDescription = pick('description')
+  const line = {
+    ...before,
+    category: pick('category', 120),
+    manufacturer,
+    model,
+    partNumber: pick('partNumber', 120),
+    description: typedDescription || [manufacturer, model].filter(Boolean).join(' '),
+    serials,
+    cosmeticGrade: pick('cosmeticGrade', 40),
+    functionalGrade: pick('functionalGrade', 40),
+    quantity: Number.isFinite(quantity) ? quantity : NaN,
+    unit,
+    notes: pick('notes', 2000),
+  }
+  const errors = manifestLineErrors({ quantity: line.quantity, description: typedDescription, model, manufacturer }, has('quantity') ? qtyText : undefined)
+  if (Number.isNaN(line.quantity)) line.quantity = 0
+  return { rowNumber: row.rowNumber, valid: errors.length === 0, errors, edited: true, line }
+}
+
 /** Applies a mapping to data rows, marking each valid or with its errors. */
 export function applyManifestMapping(headers: unknown[], dataRows: unknown[][], mapping: Record<string, number>, firstRowNumber: number): ManifestRow[] {
   const mappedColumns = new Set(Object.values(mapping))
@@ -124,11 +176,11 @@ export function applyManifestMapping(headers: unknown[], dataRows: unknown[][], 
       errors.push(`Quantity "${qtyText}" is not a whole number.`)
       quantity = 0
     }
-    if (quantity === 0 && !errors.length) errors.push('Quantity is zero.')
     const description = cell(row, mapping.description)
     const model = cell(row, mapping.model)
     const manufacturer = cell(row, mapping.manufacturer)
-    if (!description && !model && !manufacturer) errors.push('The row has no description, model or manufacturer.')
+    if (!errors.length) errors.push(...manifestLineErrors({ quantity, description, model, manufacturer }))
+    else if (!description && !model && !manufacturer) errors.push(NO_IDENTITY)
     const unitRaw = cell(row, mapping.unit).toLowerCase()
     const unit = ['lb', 'lbs', 'pound', 'pounds'].includes(unitRaw) ? 'lb' : ['kg', 'kgs'].includes(unitRaw) ? 'kg' : 'each'
     const specs: Record<string, string | number> = {}
