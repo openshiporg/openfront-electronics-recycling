@@ -1,4 +1,4 @@
-import { PlatformPage, can, day, label, term, usd, when } from '../../lib/page'
+import { PlatformPage, can, day, label, term, usd, when, storeToday } from '../../lib/page'
 import { OpButton, OpDrawer } from '../../lib/forms'
 import { listQuery } from '../../lib/platformRequest'
 import { DataTable, Empty, Notice, Section, Track, Td } from '../../lib/ui'
@@ -36,7 +36,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
                   { name: 'method', label: 'Method', type: 'select', required: true, options: ['cheque', 'wire', 'ach', 'cash'].map((m) => ({ value: m, label: term(m) })), defaultValue: 'cheque' },
                   { name: 'amountMinor', label: 'Amount', type: 'money', required: true, defaultValue: invoices.length === 1 ? invoices[0].balanceMinor : undefined },
                   { name: 'reference', label: 'Cheque or bank reference', required: true },
-                  { name: 'paidOn', label: 'Received on', type: 'date', required: true, defaultValue: new Date().toISOString().slice(0, 10) },
+                  { name: 'paidOn', label: 'Received on', type: 'date', required: true, defaultValue: storeToday() },
                 ]} submitLabel="Record" />
                 {invoiceNumber ? <RowLink href="/dashboard/platform/payments">Show every invoice</RowLink> : null}
               </Track>

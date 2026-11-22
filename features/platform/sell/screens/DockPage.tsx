@@ -1,4 +1,4 @@
-import { PlatformPage, can } from '../../lib/page'
+import { PlatformPage, can, storeToday } from '../../lib/page'
 import { OpButton, OpDrawer } from '../../lib/forms'
 import { listQuery, platformQuery } from '../../lib/platformRequest'
 import { Empty, Notice, Section, Track } from '../../lib/ui'
@@ -20,7 +20,7 @@ export default async function DockPage({ searchParams }: { searchParams: Promise
         const facilities = opts.data.facilities
         if (!facilities.length) return <Empty>Add a facility under Settings first.</Empty>
         const facilityId = param(sp, 'facility') || facilities[0].id
-        const today = new Date().toISOString().slice(0, 10)
+        const today = storeToday()
         const date = /^\d{4}-\d{2}-\d{2}$/.test(param(sp, 'date')) ? param(sp, 'date') : today
         const dayRead = await platformQuery<any>('dockDay', { facilityId, date })
         if (!dayRead.ok) return <Notice tone="alert">{dayRead.error}</Notice>

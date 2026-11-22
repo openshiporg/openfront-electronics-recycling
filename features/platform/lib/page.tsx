@@ -59,7 +59,15 @@ export function LoadError({ error }: { error: string }) {
 
 export const label = (value?: string | null) => (value ? value.replaceAll('_', ' ') : '—')
 /** A stored value shown on its own (a status, a fact): words, first letter capital. */
-export const term = (value?: string | null) => { const t = label(value); return t === '—' ? t : t.charAt(0).toUpperCase() + t.slice(1) }
+const WORDS: Record<string, string> = { ach: 'ACH', crt: 'CRT', itad: 'ITAD', r2: 'R2', r2v3: 'R2v3', nist: 'NIST', pdf: 'PDF', csv: 'CSV', id: 'ID', ssd: 'SSD', hdd: 'HDD', lcd: 'LCD', led: 'LED', cod: 'COD', po: 'PO', bol: 'BOL', usd: 'USD' }
+export const term = (value?: string | null) => {
+  const t = label(value)
+  if (t === '—') return t
+  const words = t.split(' ').map((w) => WORDS[w.toLowerCase()] ?? w)
+  const first = words[0] ?? ''
+  words[0] = WORDS[first.toLowerCase()] ? first : first.charAt(0).toUpperCase() + first.slice(1)
+  return words.join(' ')
+}
 /** Free text written by the system may carry stored values ("purge / crypto_erase"); show them as words. */
 export const prose = (text?: string | null) => (text ? text.replace(/\b[a-z]+(?:_[a-z0-9]+)+\b/g, (m) => m.replaceAll('_', ' ')) : '')
 function inZone(value: string, options: Intl.DateTimeFormatOptions) {
@@ -78,6 +86,11 @@ export const day = (value?: string | null) => {
 }
 /** The store time zone, for page notes ("Times are Eastern"). */
 export const zoneName = () => storeTimeZone ?? 'the store time zone'
+/** Today's date (YYYY-MM-DD) at the store, not on the server's clock. Call inside a PlatformPage. */
+export function storeToday(offsetDays = 0) {
+  const d = new Date(Date.now() + offsetDays * 86_400_000)
+  try { return new Intl.DateTimeFormat('en-CA', { timeZone: storeTimeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d) } catch { return d.toISOString().slice(0, 10) }
+}
 export const usd = (minor?: number | null, currency = 'USD') => (minor === null || minor === undefined ? '—' : new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(minor / 100))
 export const weight = (value?: number | string | null, unit = 'lb') => (value === null || value === undefined || value === '' ? '—' : `${Number(value).toLocaleString('en-US', { maximumFractionDigits: 1 })} ${unit}`)
 
