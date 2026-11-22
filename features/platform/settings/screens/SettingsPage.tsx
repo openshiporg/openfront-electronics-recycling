@@ -32,7 +32,7 @@ export default async function SettingsPage() {
         return (
           <div className="grid gap-5">
             <Section title="Email" actions={edit('Email (SMTP)', [
-              { name: 'smtpHost', label: 'SMTP host', defaultValue: s.smtpHost, placeholder: 'smtp.mailgun.org' },
+              { name: 'smtpHost', label: 'SMTP host', defaultValue: s.smtpHost, placeholder: 'smtp.yourprovider.com' },
               { name: 'smtpPort', label: 'Port', type: 'number', defaultValue: s.smtpPort ?? 587 },
               { name: 'smtpUser', label: 'User', defaultValue: s.smtpUser },
               { name: 'smtpPassword', label: 'Password', type: 'password', omitEmpty: true, hint: 'Leave empty to keep the current one.' },
@@ -42,8 +42,8 @@ export default async function SettingsPage() {
                 <p className="text-sm">Email is on. Sending through <span className="font-mono">{email.host}:{email.port}</span> from <span className="font-mono">{email.from}</span>, set in the {email.source === 'environment' ? 'server environment' : 'fields below'}. {email.notificationsEmailed} sent{email.notificationsFailed ? `, ${email.notificationsFailed} failed` : ''}.</p>
               ) : (
                 <div className="grid gap-2 text-sm">
-                  <p><span className="font-medium">Email is not set up.</span> Nothing waits on it: every notice still appears in the person&apos;s notification list in their portal or dashboard, and every action works. Password-reset links are only sent by email, so until this is set, staff reset a portal user&apos;s password from their account page.</p>
-                  <p>Missing: SMTP {email.missing.join(', ')}. Set it with the Edit button here, or in the server environment as <span className="font-mono">SMTP_HOST</span>, <span className="font-mono">SMTP_PORT</span>, <span className="font-mono">SMTP_USER</span>, <span className="font-mono">SMTP_PASSWORD</span> and <span className="font-mono">SMTP_FROM</span>.</p>
+                  <p><span className="font-medium">Outgoing email is not set up.</span> Nothing waits on it: every notice still appears in the person&apos;s notification list in their portal or dashboard, and every action works. Password-reset links are only sent by email, so until this is set, staff reset a portal user&apos;s password from their account page.</p>
+                  <p>Missing: SMTP {email.missing.join(', ')}. To turn it on, set the SMTP host, port, user, password and from address with the Edit button here, or in the server environment as <span className="font-mono">SMTP_HOST</span>, <span className="font-mono">SMTP_PORT</span>, <span className="font-mono">SMTP_USER</span>, <span className="font-mono">SMTP_PASSWORD</span> and <span className="font-mono">SMTP_FROM</span>.</p>
                   {email.notificationsNotEmailed ? <p className="text-muted-foreground">{email.notificationsNotEmailed} notification(s) so far were shown in-app only.</p> : null}
                 </div>
               )}
