@@ -1,5 +1,5 @@
 import { ROLE_PERMISSIONS, type RolePermission } from '../access'
-import { fail, requireStaff, str, type Ctx, type Tx } from '../lib/core'
+import { cleanSiteUrl, fail, requestOrigin, requireStaff, str, type Ctx, type Tx } from '../lib/core'
 import { getSettings, smtpConfig } from '../lib/services'
 import { seedStarterRecords } from './starterRecords'
 
@@ -157,6 +157,8 @@ type OnboardingInput = {
   facility?: { name?: string; code?: string; addressLine1?: string; city?: string; region?: string; postalCode?: string; countryCode?: string; phone?: string }
   certifications?: Array<{ name: string; certificateNumber?: string; certifyingBody?: string; expiresOn?: string | null }>
   wireInstructions?: string
+  /** Public site address for links in email and PDFs; defaults to the address onboarding is run from. */
+  storefrontUrl?: string
   /** 'basic' (default): settings, roles and catalogue. 'full': also the §4.11 starter records. */
   template?: 'basic' | 'full'
   /** Password for the starter logins (full template). Generated when omitted; returned once. */
@@ -186,6 +188,8 @@ export async function runElectronicsRecyclingOnboarding(context: Ctx, input: Onb
       where: { id: settings.id },
       data: {
         businessName, legalName: str(input.legalName, 200) || businessName,
+        // Links in email and PDFs: what staff typed, else what is saved, else the address onboarding was run from.
+        storefrontUrl: cleanSiteUrl(input.storefrontUrl) || cleanSiteUrl(settings.storefrontUrl) || requestOrigin(context),
         supportEmail: str(input.supportEmail, 200) || settings.supportEmail, supportPhone: str(input.supportPhone, 40) || settings.supportPhone,
         timezone: str(input.timezone, 60) || settings.timezone || 'America/Chicago',
         weightUnit: input.weightUnit === 'kg' ? 'kg' : 'lb',

@@ -1,7 +1,7 @@
 import { BULK, audit, dbNow, fail, inTransaction, lockRow, nextNumber, str, verificationCode, type Ctx, type Tx } from '../lib/core'
 import { erasureResult, erasureTechnique, ERASURE_FIELDS, proposeMapping, detectHeaderRow } from '../lib/rules/sheets'
 import { sanitizationAllowsSale, sanitizationStatusFromRecords } from '../lib/rules/lifecycle'
-import { afterCommit, asDownload, decodeUpload, getSettings, notify, organizationUsers, storeFile, storeUpload, type FileInput } from '../lib/services'
+import { afterCommit, asDownload, decodeUpload, getSettings, notify, organizationUsers, siteBase, storeFile, storeUpload, type FileInput } from '../lib/services'
 import { readWorkbook, writeWorkbook, XLSX_MIME } from '../lib/spreadsheet'
 import { renderPdf } from '../lib/pdf'
 
@@ -278,10 +278,10 @@ export async function exportAssets(context: Ctx, args: { jobId?: string | null; 
 
 // ---------------------------------------------------------------- certificates (Y2)
 
-async function certificatePdf(tx: Tx, cert: any) {
+async function certificatePdf(tx: Tx, cert: any, context?: Pick<Ctx, 'req' | 'session'>) {
   const settings = await getSettings(tx)
   const s = cert.snapshot
-  const base = (settings.storefrontUrl || '').replace(/\/$/, '')
+  const base = await siteBase(tx, context)
   const blocks: any[] = [
     { kind: 'title', text: cert.type === 'data_destruction' ? 'Certificate of Data Destruction' : 'Certificate of Recycling' },
     { kind: 'pairs', pairs: [['Certificate', cert.certificateNumber], ['Verification code', cert.verificationCode], ['Verify at', `${base}/verify/${cert.verificationCode}`], ['Issued', new Date(cert.issuedAt).toUTCString()], ['Client', s.client.name], ['Job', s.job.jobNumber], ['Collected', s.job.collectedAt ? new Date(s.job.collectedAt).toDateString() : '-'], ['Facility', s.facility ?? '-']] },
@@ -361,7 +361,7 @@ export async function issueCertificate(context: Ctx, args: { jobId: string; type
     }
     const snapshot = await certificateSnapshot(tx, job, type, staff?.name ?? 'Staff')
     const cert = await tx.certificate.create({ data: { certificateNumber: await nextNumber(tx, 'certificate'), type, jobId: job.id, organizationId: job.organizationId, issuedAt: await dbNow(tx), issuedById: context.session!.itemId, verificationCode: verificationCode(), snapshot, status: 'issued', replacesId: replaces?.id ?? null } })
-    const pdf = await certificatePdf(tx, { ...cert, replacesNumber: replaces?.certificateNumber })
+    const pdf = await certificatePdf(tx, { ...cert, replacesNumber: replaces?.certificateNumber }, context)
     const file = await storeFile(tx, { filename: `${cert.certificateNumber}.pdf`, mimeType: 'application/pdf', bytes: pdf, purpose: 'certificate', ownerClientOrganizationId: job.organizationId, uploadedById: context.session!.itemId })
     const updated = await tx.certificate.update({ where: { id: cert.id }, data: { pdfId: file.id } })
     await notify(tx, { userIds: await organizationUsers(tx, job.organizationId), type: 'certificate_issued', title: `${cert.certificateNumber} for ${job.jobNumber}`, body: `Your ${type === 'data_destruction' ? 'data destruction' : 'recycling'} certificate is ready to download.`, link: `/client/jobs/${job.jobNumber}` })

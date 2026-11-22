@@ -9,7 +9,7 @@ import { Notice, Pill, Track } from '../../lib/ui'
 const CERTS = ['R2v3', 'e-Stewards', 'NAID AAA', 'ISO 14001', 'ISO 45001', 'ISO 9001', 'ISO 27001', 'RIOS']
 const field = 'h-9 rounded-[6px] border bg-background px-3 text-sm'
 
-type Defaults = { businessName?: string; legalName?: string; supportEmail?: string; supportPhone?: string; timezone?: string; weightUnit?: string; wireInstructions?: string; hasFacility: boolean; hasStarter: boolean }
+type Defaults = { businessName?: string; legalName?: string; supportEmail?: string; supportPhone?: string; timezone?: string; weightUnit?: string; wireInstructions?: string; storefrontUrl?: string; hasFacility: boolean; hasStarter: boolean }
 
 /** T8: one form; runElectronicsRecyclingOnboarding is idempotent, so running it again only fills gaps. */
 export function OnboardingForm({ defaults }: { defaults: Defaults }) {
@@ -25,7 +25,7 @@ export function OnboardingForm({ defaults }: { defaults: Defaults }) {
     const s = (k: string) => String(f.get(k) ?? '').trim()
     const input = {
       businessName: s('businessName'), legalName: s('legalName'), supportEmail: s('supportEmail'), supportPhone: s('supportPhone'),
-      timezone: s('timezone'), weightUnit: s('weightUnit'), wireInstructions: s('wireInstructions'),
+      timezone: s('timezone'), weightUnit: s('weightUnit'), wireInstructions: s('wireInstructions'), storefrontUrl: s('storefrontUrl'),
       facility: { name: s('facility.name'), code: s('facility.code'), addressLine1: s('facility.addressLine1'), city: s('facility.city'), region: s('facility.region'), postalCode: s('facility.postalCode'), countryCode: s('facility.countryCode'), phone: s('facility.phone') },
       certifications: ticked.map((name) => ({ name, certificateNumber: s(`cert.${name}.number`), certifyingBody: s(`cert.${name}.body`), expiresOn: s(`cert.${name}.expires`) || null })),
       template: f.get('starter') === 'on' ? 'full' : 'basic',
@@ -68,6 +68,7 @@ export function OnboardingForm({ defaults }: { defaults: Defaults }) {
         <label className="grid gap-1 text-sm">Support phone<Input name="supportPhone" defaultValue={defaults.supportPhone} /></label>
         <label className="grid gap-1 text-sm">Time zone<Input name="timezone" defaultValue={defaults.timezone || 'America/Chicago'} /></label>
         <label className="grid gap-1 text-sm">Weight unit<select name="weightUnit" defaultValue={defaults.weightUnit || 'lb'} className={field}><option value="lb">Pounds</option><option value="kg">Kilograms</option></select></label>
+        <label className="grid gap-1 text-sm sm:col-span-2">Public site address<Input name="storefrontUrl" placeholder="Leave empty to use the address you are on now" defaultValue={defaults.storefrontUrl} /><span className="text-xs text-muted-foreground">Used for links in email, notices and certificates. You can change it later in Settings.</span></label>
         <label className="grid gap-1 text-sm sm:col-span-2">Bank transfer instructions<textarea name="wireInstructions" rows={3} defaultValue={defaults.wireInstructions} className="rounded-[6px] border bg-background px-3 py-2 text-sm" /></label>
       </fieldset>
 

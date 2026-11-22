@@ -185,6 +185,29 @@ export function clientIp(context: Ctx) {
   return String(value || req?.socket?.remoteAddress || '').split(',')[0].trim().slice(0, 64)
 }
 
+/** "https://host" of the request, from the proxy headers or Host; '' when there is no usable request. */
+export function requestOrigin(context: Pick<Ctx, 'req'> | null | undefined) {
+  const headers = context?.req?.headers
+  if (!headers) return ''
+  const first = (v: unknown) => String(Array.isArray(v) ? v[0] : v ?? '').split(',')[0].trim()
+  const host = first(headers['x-forwarded-host']) || first(headers.host)
+  if (!/^[a-z0-9.-]+(:\d{1,5})?$/i.test(host)) return ''
+  const proto = first(headers['x-forwarded-proto']) || (context?.req?.socket?.encrypted ? 'https' : /^(localhost|127\.|\[::1\])/.test(host) ? 'http' : 'https')
+  return `${proto === 'http' ? 'http' : 'https'}://${host.toLowerCase()}`
+}
+
+/** A site address someone typed: http(s) origin only, no path or trailing slash; '' when it is not one. */
+export function cleanSiteUrl(value: unknown) {
+  const raw = String(value ?? '').trim()
+  if (!raw || (/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) && !/^https?:\/\//i.test(raw)) || /\s/.test(raw)) return ''
+  try {
+    const url = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`)
+    return /^https?:$/.test(url.protocol) && !url.username && (url.hostname.includes('.') || url.hostname === 'localhost') ? url.origin : ''
+  } catch {
+    return ''
+  }
+}
+
 export function userAgent(context: Ctx) {
   return String(context.req?.headers?.['user-agent'] || '').slice(0, 300)
 }

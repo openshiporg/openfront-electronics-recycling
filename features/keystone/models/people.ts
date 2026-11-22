@@ -6,6 +6,7 @@ import { document } from '@keystone-6/fields-document'
 import { ROLE_PERMISSIONS, can, denyAll, hasPermission, isSignedIn, permissions, rules, staffAccess } from '../access'
 import { trackingFields } from './trackingFields'
 import { addressFields, choice, fileRef, money, readOnly } from './fields'
+import { cleanSiteUrl } from '../lib/core'
 
 export const User = list({
   access: {
@@ -198,7 +199,15 @@ export const StoreSettings = list({
     smtpUser: text(),
     smtpPassword: text({ access: { read: denyAll }, ui: { itemView: { fieldMode: 'edit' }, listView: { fieldMode: 'hidden' } } }),
     smtpFrom: text(),
-    storefrontUrl: text({ ui: { description: 'Public address of the site, used in email links.' } }),
+    storefrontUrl: text({
+      ui: { description: 'Public address of the site, used for links in email, notices and certificates. Empty: the address staff use.' },
+      hooks: {
+        resolveInput: ({ resolvedData }) => (resolvedData.storefrontUrl === undefined ? undefined : cleanSiteUrl(resolvedData.storefrontUrl)),
+        validateInput: ({ resolvedData, inputData, addValidationError }) => {
+          if (inputData.storefrontUrl && !resolvedData.storefrontUrl) addValidationError('Enter the site address as https://your-domain.com.')
+        },
+      },
+    }),
     ...trackingFields,
   },
 })

@@ -8,7 +8,7 @@ const { getTestContext, skipReason, root, uid } = require('./support/db.cjs')
 const f = require('./support/fixtures.cjs')
 
 const skip = skipReason()
-let ctx, jobs, proc, lots, sheets, XLSX, staffCtx, staffUser, driverUser, driverCtx
+let ctx, jobs, proc, lots, sheets, services, XLSX, staffCtx, staffUser, driverUser, driverCtx
 
 test.before(async () => {
   if (skip) return
@@ -17,6 +17,7 @@ test.before(async () => {
   proc = require(path.join(root, 'features/keystone/domain/process.ts'))
   lots = require(path.join(root, 'features/keystone/domain/lots.ts'))
   sheets = require(path.join(root, 'features/keystone/domain/sheets.ts'))
+  services = require(path.join(root, 'features/keystone/lib/services.ts'))
   XLSX = require('xlsx')
   staffUser = await f.staff(ctx.prisma)
   staffCtx = await ctx.as(staffUser.id)
@@ -190,6 +191,29 @@ test('sanitisation gate on a direct list write: updateAsset cannot make an unsan
   await proc.recordSanitization(staffCtx, { assetIds: [a.id], method: 'purge', technique: 'crypto_erase', result: 'passed' })
   await ctx.sudo.db.Asset.updateOne({ where: { id: a.id }, data: { status: 'ready_for_sale' } })
   assert.equal((await ctx.prisma.asset.findUnique({ where: { id: a.id } })).status, 'ready_for_sale')
+})
+
+test('link base: saved site address first, else the origin of a staff request, never a buyer\'s Host header', { skip }, async () => {
+  const s = await f.settings(ctx.prisma)
+  const saved = s.storefrontUrl
+  const staffReq = { headers: { host: 'staff.recycler.example', 'x-forwarded-proto': 'https' } }
+  const buyerReq = { headers: { host: 'evil.example' } }
+  try {
+    await ctx.prisma.storeSettings.update({ where: { id: 1 }, data: { storefrontUrl: '' } })
+    const staffSession = staffCtx.session
+    const { user } = await f.buyer(ctx.prisma)
+    const buyerSession = (await ctx.as(user.id)).session
+    assert.equal(await services.siteBase(ctx.prisma, { req: staffReq, session: staffSession }), 'https://staff.recycler.example')
+    assert.equal(await services.siteBase(ctx.prisma, { req: buyerReq, session: buyerSession }), 'https://staff.recycler.example', 'a buyer request does not move it')
+    assert.equal(await services.siteBase(ctx.prisma, { req: buyerReq, session: null }), 'https://staff.recycler.example', 'nor an anonymous one')
+    assert.equal(await services.siteBase(ctx.prisma), 'https://staff.recycler.example', 'the clock and email sender use the last staff origin')
+    await ctx.sudo.db.StoreSettings.updateOne({ where: { id: '1' }, data: { storefrontUrl: 'recycle.riverbend.example/some/path' } })
+    assert.equal((await ctx.prisma.storeSettings.findUnique({ where: { id: 1 } })).storefrontUrl, 'https://recycle.riverbend.example', 'saved as an origin')
+    assert.equal(await services.siteBase(ctx.prisma, { req: staffReq, session: staffSession }), 'https://recycle.riverbend.example', 'the saved address wins')
+    await assert.rejects(ctx.sudo.db.StoreSettings.updateOne({ where: { id: '1' }, data: { storefrontUrl: 'not a url at all' } }), /https:\/\/your-domain/)
+  } finally {
+    await ctx.prisma.storeSettings.update({ where: { id: 1 }, data: { storefrontUrl: saved } })
+  }
 })
 
 function xlsx(rows) {

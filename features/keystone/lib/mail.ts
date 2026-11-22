@@ -1,5 +1,5 @@
 import { createTransport } from 'nodemailer'
-import { getSettings, smtpConfig } from './services'
+import { getSettings, siteBase, smtpConfig } from './services'
 import type { Ctx } from './core'
 
 // Password reset email. Mail settings are the same as notification email:
@@ -40,7 +40,13 @@ export async function sendPasswordResetEmail({ token, identity, context }: { tok
   }
   const user = await prisma.user.findUnique({ where: { email: identity }, select: { kind: true, name: true, email: true } })
   if (!user) return
-  const base = process.env.SMTP_STORE_LINK || settings.storefrontUrl || ''
+  const base = await siteBase(prisma)
+  if (!base) {
+    // No saved site address and no signed-in request seen yet: a link built from this
+    // unauthenticated request's Host header could point anywhere, so send nothing.
+    console.warn('[email] Password reset not sent: set the public site address in Settings.')
+    return
+  }
   const url = passwordResetUrl(base, user.kind, token, user.email)
   const businessName = settings.businessName || 'Account'
   const transport = createTransport({ host: smtp.host, port: smtp.port, secure: smtp.port === 465, auth: smtp.user ? { user: smtp.user, pass: smtp.pass } : undefined })

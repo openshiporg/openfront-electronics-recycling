@@ -13,7 +13,7 @@ export default async function OnboardingPage() {
       {async () => {
         const [status, s] = await Promise.all([
           platformQuery<any>('onboardingStatus', {}),
-          listQuery<any>('query { s: storeSettings(where: { id: 1 }) { businessName legalName supportEmail supportPhone timezone weightUnit wireInstructions } facilitiesCount clientOrganizationsCount }'),
+          listQuery<any>('query { s: storeSettings(where: { id: 1 }) { businessName legalName supportEmail supportPhone timezone weightUnit wireInstructions storefrontUrl } facilitiesCount clientOrganizationsCount }'),
         ])
         if (!status.ok) return <Notice tone="alert">{status.error}</Notice>
         const st = s.ok ? s.data.s ?? {} : {}

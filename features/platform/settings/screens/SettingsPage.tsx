@@ -57,7 +57,7 @@ export default async function SettingsPage() {
                 { name: 'supportEmail', label: 'Support email', type: 'email', defaultValue: s.supportEmail }, { name: 'supportPhone', label: 'Support phone', defaultValue: s.supportPhone },
                 { name: 'timezone', label: 'Time zone', required: true, defaultValue: s.timezone, hint: 'IANA name, for example America/Chicago.' },
                 { name: 'weightUnit', label: 'Weight unit', type: 'select', options: [{ value: 'lb', label: 'Pounds' }, { value: 'kg', label: 'Kilograms' }], defaultValue: s.weightUnit },
-                { name: 'storefrontUrl', label: 'Public site address', defaultValue: s.storefrontUrl, placeholder: 'https://recycle.example.com', wide: true },
+                { name: 'storefrontUrl', label: 'Public site address', defaultValue: s.storefrontUrl, placeholder: 'https://recycle.example.com', wide: true, hint: 'Links in email, notices and certificates start with this. Empty: the address staff are using.' },
               ])}
               {manage ? <OpDrawer op="attachFile" fixed={{ target: 'logo' }} title="Logo" trigger="Logo" fields={[{ name: 'file', label: 'Image', type: 'file', required: true, accept: 'image/*' }]} submitLabel="Upload" /> : null}
             </Track>}>

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { createTransport } from 'nodemailer'
-import { fail, type Ctx, type Tx } from './core'
+import { cleanSiteUrl, fail, requestOrigin, type Ctx, type Tx } from './core'
 import { formatMinor } from './rules/money'
 
 // ---------------------------------------------------------------- settings
@@ -23,6 +23,32 @@ export async function getSettings(db: Tx): Promise<Settings> {
 export async function moneyText(db: Tx, minor: number | null | undefined) {
   const settings = await getSettings(db)
   return formatMinor(minor, settings.currencyCode || 'USD')
+}
+
+// ---------------------------------------------------------------- site address
+
+let signedInOrigin = ''
+
+/**
+ * Base for links in email, notices and PDFs: Settings.storefrontUrl (onboarding sets it from its own
+ * request), else the origin of the current staff request, else the last staff origin this server saw.
+ * Only staff requests count: a link can go to someone else (an outbid notice, a reset email), so the
+ * Host header of a buyer's or an anonymous request must never decide where it points.
+ */
+export async function siteBase(db: Tx, context?: Pick<Ctx, 'req' | 'session'> | null) {
+  const settings = await getSettings(db)
+  const saved = cleanSiteUrl(settings.storefrontUrl)
+  if (context) await noteRequestOrigin({ prisma: db, req: context.req, session: context.session })
+  return saved || signedInOrigin
+}
+
+/** Remembers the origin of a staff request, so the clock and the email sender have a base too. */
+export async function noteRequestOrigin(context: Pick<Ctx, 'prisma' | 'req' | 'session'>) {
+  const session: any = context.session
+  if (session?.data?.kind === 'staff' && session?.data?.role?.canAccessDashboard) {
+    const origin = requestOrigin(context)
+    if (origin) signedInOrigin = origin
+  }
 }
 
 // ---------------------------------------------------------------- files
@@ -138,7 +164,7 @@ export async function organizationUsers(tx: Tx, organizationId: string) {
 let delivering = false
 
 /** Sends queued notification email. Called after commits and by the ticker. */
-export async function deliverPendingEmail(context: Pick<Ctx, 'prisma'>) {
+export async function deliverPendingEmail(context: Pick<Ctx, 'prisma'> & Partial<Pick<Ctx, 'req' | 'session'>>) {
   if (delivering) return
   delivering = true
   try {
@@ -148,7 +174,7 @@ export async function deliverPendingEmail(context: Pick<Ctx, 'prisma'>) {
     const pending = await context.prisma.notification.findMany({ where: { emailStatus: 'queued' }, take: 50, orderBy: { createdAt: 'asc' }, include: { user: { select: { email: true, name: true } } } })
     if (!pending.length) return
     const transport = createTransport({ host: smtp.host, port: smtp.port, secure: smtp.port === 465, auth: smtp.user ? { user: smtp.user, pass: smtp.pass } : undefined })
-    const base = (process.env.SMTP_STORE_LINK || settings.storefrontUrl || '').replace(/\/$/, '')
+    const base = await siteBase(context.prisma, context)
     for (const n of pending) {
       const claimed = await context.prisma.notification.updateMany({ where: { id: n.id, emailStatus: 'queued' }, data: { emailStatus: 'sent' } })
       if (!claimed.count) continue
@@ -172,6 +198,6 @@ export async function deliverPendingEmail(context: Pick<Ctx, 'prisma'>) {
   }
 }
 
-export function afterCommit(context: Pick<Ctx, 'prisma'>) {
+export function afterCommit(context: Pick<Ctx, 'prisma'> & Partial<Pick<Ctx, 'req' | 'session'>>) {
   void deliverPendingEmail(context)
 }

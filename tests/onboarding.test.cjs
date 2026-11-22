@@ -39,6 +39,23 @@ test('basic template: safe to run twice', { skip }, async () => {
   assert.equal(again.counts.certifications, undefined, 'no certification unless the operator gives one')
 })
 
+test('site address: onboarding saves what was typed, else the origin of the request that ran it; no env var', { skip }, async () => {
+  const owner = await f.staff(ctx.prisma)
+  const s = await f.settings(ctx.prisma)
+  const saved = s.storefrontUrl
+  try {
+    await ctx.prisma.storeSettings.update({ where: { id: 1 }, data: { storefrontUrl: '' } })
+    const as = await ctx.as(owner.id)
+    const fromRequest = Object.assign(Object.create(as), { req: { headers: { host: 'ops.riverbend-itad.com', 'x-forwarded-proto': 'https' } } })
+    await onboarding.runElectronicsRecyclingOnboarding(fromRequest, input(`ops-${uid()}@riverbend-itad.com`))
+    assert.equal((await ctx.prisma.storeSettings.findUnique({ where: { id: 1 } })).storefrontUrl, 'https://ops.riverbend-itad.com')
+    await onboarding.runElectronicsRecyclingOnboarding(fromRequest, input(`ops-${uid()}@riverbend-itad.com`, { storefrontUrl: 'https://recycle.riverbend-itad.com/' }))
+    assert.equal((await ctx.prisma.storeSettings.findUnique({ where: { id: 1 } })).storefrontUrl, 'https://recycle.riverbend-itad.com', 'typed address wins, saved as an origin')
+  } finally {
+    await ctx.prisma.storeSettings.update({ where: { id: 1 }, data: { storefrontUrl: saved } })
+  }
+})
+
 test('certifications: created only when ticked with a number', { skip }, async () => {
   const owner = await f.staff(ctx.prisma)
   const as = await ctx.as(owner.id)
