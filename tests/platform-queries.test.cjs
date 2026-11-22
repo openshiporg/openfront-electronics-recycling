@@ -84,3 +84,34 @@ test('every sidebar entry has a page, and every page is in the sidebar', () => {
   const routes = fs.existsSync(base) ? fs.readdirSync(base, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name) : []
   assert.deepEqual(routes.filter((r) => !hrefs.includes(r)), [], 'pages not in the sidebar')
 })
+
+test('docs/FEATURE-MATRIX.md is current and every §5.4 row is wired on its page', () => {
+  const matrix = require(path.join(root, 'scripts/feature-matrix.cjs'))
+  assert.equal(fs.readFileSync(path.join(root, 'docs/FEATURE-MATRIX.md'), 'utf8'), matrix.render(), 'run node scripts/feature-matrix.cjs')
+  const rows = matrix.ROWS.filter((r) => r.length > 1)
+  assert.equal(rows.length, 91, '30 storefront rows and 61 platform rows')
+  // Screens that each platform route renders: the route wrapper's import, plus the client pieces that screen imports.
+  const base = path.join(root, 'app/dashboard/(admin)/platform')
+  const screenSource = (route) => {
+    const wrapper = fs.readFileSync(path.join(base, route, 'page.tsx'), 'utf8')
+    const imp = wrapper.match(/from '@\/(features\/platform\/[^']+)'/)[1]
+    const seen = new Set()
+    const read = (file) => {
+      if (seen.has(file) || !fs.existsSync(file)) return ''
+      seen.add(file)
+      const src = fs.readFileSync(file, 'utf8')
+      const local = [...src.matchAll(/from '\.\/(\w+)'/g)].map((m) => path.join(path.dirname(file), `${m[1]}.tsx`))
+      return src + local.map(read).join('\n')
+    }
+    return read(path.join(root, `${imp}.tsx`))
+  }
+  const problems = []
+  for (const [id, , ops, lists, route] of rows) {
+    if (!/^[SKRYMT]\d/.test(id)) continue
+    const src = route.split(', ').map(screenSource).join('\n')
+    const opHit = ops.some((op) => new RegExp(`op="${op}"|Operation\\('${op}'|platformQuery<[^>]*>\\('${op}'|platformQuery\\('${op}'`).test(src))
+    const listHit = lists.some((l) => src.includes(`listKey="${l}"`) || src.includes(`type: '${l}'`) || new RegExp(`\\b${l[0].toLowerCase()}${l.slice(1)}s?\\(`).test(src))
+    if (!opHit && !listHit) problems.push(`${id} (${route}): none of ${[...ops, ...lists].join(', ')} is used`)
+  }
+  assert.deepEqual(problems, [])
+})
