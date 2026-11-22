@@ -1,77 +1,54 @@
-'use server' 
+import { createTransport } from 'nodemailer'
+import { getSettings, smtpConfig } from './services'
+import type { Ctx } from './core'
 
-import { createTransport, getTestMessageUrl } from "nodemailer";
+// Password reset email. Mail settings are the same as notification email:
+// SMTP_* env vars, else the SMTP fields on Settings. Buyers and clients reset on the
+// storefront (/reset-password); staff reset on the dashboard (/dashboard/reset).
 
-// Utility function to get base URL for emails
-function getBaseUrlForEmails(): string {
-  if (process.env.SMTP_STORE_LINK) {
-    return process.env.SMTP_STORE_LINK;
-  }
-  
-  // Fallback warning - this should be set in production
-  console.warn('SMTP_STORE_LINK not set. Please add SMTP_STORE_LINK to your environment variables for email links to work properly.');
-  return '';
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string)
 }
 
-const transport = createTransport({
-  // @ts-ignore
-  host: process.env.SMTP_HOST,
-  port: process.env.SMTP_PORT,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASSWORD,
-  },
-});
+export function passwordResetUrl(base: string, kind: string | null | undefined, token: string, email: string) {
+  const root = base.replace(/\/$/, '')
+  const query = `token=${encodeURIComponent(token)}&email=${encodeURIComponent(email)}`
+  return kind === 'staff' ? `${root}/dashboard/reset?${query}` : `${root}/reset-password?${query}`
+}
 
-function passwordResetEmail({ url }: { url: string }): string {
-  const backgroundColor = "#f9f9f9";
-  const textColor = "#444444";
-  const mainBackgroundColor = "#ffffff";
-  const buttonBackgroundColor = "#346df1";
-  const buttonBorderColor = "#346df1";
-  const buttonTextColor = "#ffffff";
-
+function passwordResetHtml({ url, businessName, name }: { url: string; businessName: string; name: string }) {
   return `
-    <body style="background: ${backgroundColor};">
-      <table width="100%" border="0" cellspacing="20" cellpadding="0" style="background: ${mainBackgroundColor}; max-width: 600px; margin: auto; border-radius: 10px;">
-        <tr>
-          <td align="center" style="padding: 10px 0px 0px 0px; font-size: 18px; font-family: Helvetica, Arial, sans-serif; color: ${textColor};">
-            Please click below to reset your password
-          </td>
-        </tr>
-        <tr>
-          <td align="center" style="padding: 20px 0;">
-            <table border="0" cellspacing="0" cellpadding="0">
-              <tr>
-                <td align="center" style="border-radius: 5px;" bgcolor="${buttonBackgroundColor}"><a href="${url}" target="_blank" style="font-size: 18px; font-family: Helvetica, Arial, sans-serif; color: ${buttonTextColor}; text-decoration: none; border-radius: 5px; padding: 10px 20px; border: 1px solid ${buttonBorderColor}; display: inline-block; font-weight: bold;">Reset Password</a></td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-        <tr>
-          <td align="center" style="padding: 0px 0px 10px 0px; font-size: 16px; line-height: 22px; font-family: Helvetica, Arial, sans-serif; color: ${textColor};">
-            If you did not request this email you can safely ignore it.
-          </td>
-        </tr>
+    <body style="background:#f9f9f9;margin:0;padding:24px;">
+      <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background:#ffffff;max-width:560px;margin:auto;border-radius:8px;font-family:Helvetica,Arial,sans-serif;color:#333333;">
+        <tr><td style="padding:28px 28px 8px;font-size:18px;font-weight:bold;">${escapeHtml(businessName)}</td></tr>
+        <tr><td style="padding:8px 28px;font-size:15px;line-height:22px;">${name ? `Hello ${escapeHtml(name)},<br><br>` : ''}Someone asked to reset the password for this account. Use the button below to choose a new one.</td></tr>
+        <tr><td style="padding:16px 28px;"><a href="${url}" target="_blank" style="display:inline-block;background:#1f2937;color:#ffffff;text-decoration:none;padding:10px 20px;border-radius:6px;font-size:15px;font-weight:bold;">Choose a new password</a></td></tr>
+        <tr><td style="padding:8px 28px 28px;font-size:13px;line-height:20px;color:#666666;">The link works once and expires soon. If you did not ask for this, ignore this email; your password stays the same.</td></tr>
       </table>
-    </body>
-  `;
+    </body>`
 }
 
-export async function sendPasswordResetEmail(resetToken: string, to: string, baseUrl?: string): Promise<void> {
-  // Use provided baseUrl or fall back to utility function
-  const frontendUrl = baseUrl || getBaseUrlForEmails();
-  
-  // email the user a token
-  const info = await transport.sendMail({
-    to,
-    from: process.env.SMTP_FROM,
-    subject: "Your password reset token!",
-    html: passwordResetEmail({
-      url: `${frontendUrl}/dashboard/reset?token=${resetToken}`,
-    }),
-  });
-  if (process.env.MAIL_USER?.includes("ethereal.email")) {
-    console.log(`📧 Message Sent!  Preview it at ${getTestMessageUrl(info as any)}`);
+export async function sendPasswordResetEmail({ token, identity, context }: { token: string; identity: string; context: Ctx }): Promise<void> {
+  const prisma = context.sudo().prisma
+  const settings = await getSettings(prisma)
+  const smtp = smtpConfig(settings)
+  if (!smtp) {
+    // No mail server yet: the request still succeeds (no account enumeration); staff can
+    // reset the person's password from Team, and Settings shows that email is not set up.
+    console.warn('[email] Password reset requested but no mail server is set up in Settings or SMTP_*.')
+    return
   }
+  const user = await prisma.user.findUnique({ where: { email: identity }, select: { kind: true, name: true, email: true } })
+  if (!user) return
+  const base = process.env.SMTP_STORE_LINK || settings.storefrontUrl || ''
+  const url = passwordResetUrl(base, user.kind, token, user.email)
+  const businessName = settings.businessName || 'Account'
+  const transport = createTransport({ host: smtp.host, port: smtp.port, secure: smtp.port === 465, auth: smtp.user ? { user: smtp.user, pass: smtp.pass } : undefined })
+  await transport.sendMail({
+    from: smtp.from ? `${businessName} <${smtp.from}>` : undefined,
+    to: user.email,
+    subject: `Reset your ${businessName} password`,
+    text: `Someone asked to reset the password for this account. Choose a new one here:\n\n${url}\n\nIf you did not ask for this, ignore this email.\n\n${businessName}`,
+    html: passwordResetHtml({ url, businessName, name: user.name || '' }),
+  })
 }

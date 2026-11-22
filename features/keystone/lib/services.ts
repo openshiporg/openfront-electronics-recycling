@@ -77,7 +77,7 @@ export function asDownload(filename: string, mimeType: string, bytes: Buffer | U
 
 // ---------------------------------------------------------------- notifications and email
 
-function smtpConfig(settings: Settings) {
+export function smtpConfig(settings: Settings) {
   const host = process.env.SMTP_HOST || settings.smtpHost
   if (!host) return null
   return {

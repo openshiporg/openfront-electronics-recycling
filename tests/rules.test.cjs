@@ -232,3 +232,10 @@ test('business days skip weekends', () => {
   assert.equal(time.addBusinessDays(friday, 1).toISOString().slice(0, 10), '2026-11-23')
   assert.equal(time.addBusinessDays(friday, 3).toISOString().slice(0, 10), '2026-11-25')
 })
+
+test('password reset link: buyers and clients go to the storefront page, staff to the dashboard', () => {
+  const { passwordResetUrl } = load('features/keystone/lib/mail.ts')
+  assert.equal(passwordResetUrl('https://riverbend-itad.com/', 'buyer', 'a b', 'ops+northgate@riverbend-itad.com'), 'https://riverbend-itad.com/reset-password?token=a%20b&email=ops%2Bnorthgate%40riverbend-itad.com')
+  assert.equal(passwordResetUrl('https://riverbend-itad.com', 'client', 't', 'x@y.com'), 'https://riverbend-itad.com/reset-password?token=t&email=x%40y.com')
+  assert.equal(passwordResetUrl('https://riverbend-itad.com', 'staff', 't', 'x@y.com'), 'https://riverbend-itad.com/dashboard/reset?token=t&email=x%40y.com')
+})

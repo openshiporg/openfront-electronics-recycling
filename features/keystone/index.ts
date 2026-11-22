@@ -39,8 +39,7 @@ const { withAuth } = createAuth({
   },
   passwordResetLink: {
     async sendToken(args) {
-      // send the email
-      await sendPasswordResetEmail(args.token, args.identity);
+      await sendPasswordResetEmail({ token: args.token, identity: args.identity, context: args.context as any });
     },
   },
   sessionData: SESSION_DATA,
