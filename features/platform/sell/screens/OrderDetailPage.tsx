@@ -78,7 +78,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                   {inv.lines.map((l: any) => <tr key={l.id}><Td>{l.description}</Td><Td>{term(l.kind)}</Td><Td className="text-right tabular-nums">{l.quantity}</Td><Td className="text-right tabular-nums">{usd(l.totalMinor)}</Td></tr>)}
                 </DataTable>
                 <p className="mt-2 text-sm">Due {day(inv.dueAt)} · paid {usd(inv.paidMinor)} · balance {usd(inv.balanceMinor)}</p>
-                {inv.payments.length ? <ul className="mt-2 text-sm">{inv.payments.map((p: any) => <li key={p.id}>{label(p.method)} {usd(p.amountMinor)} · {label(p.status)} {p.paidOn ? `· ${day(p.paidOn)}` : ''}</li>)}</ul> : null}
+                {inv.payments.length ? <ul className="mt-2 text-sm">{inv.payments.map((p: any) => <li key={p.id}>{term(p.method)} {usd(p.amountMinor)} · {label(p.status)} {p.paidOn ? `· ${day(p.paidOn)}` : ''}</li>)}</ul> : null}
               </Section>
             ) : null}
 
