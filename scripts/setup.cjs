@@ -3,7 +3,7 @@
 // first-run screen does), runs onboarding, and with --full adds the §4.11 starter
 // records through the same domain functions the app uses.
 //
-//   DATABASE_URL=... node scripts/seed-starter.cjs --full \
+//   DATABASE_URL=... node scripts/setup.cjs --full \
 //     --owner-email ops@riverbend-itad.com --owner-name "Jordan Hale" \
 //     --business "Riverbend ITAD" --out ~/.config/openfront/er-starter-logins.json \
 //     [--certification "R2v3|R2-xx-xxxxx|SERI|2028-03-31"]   (only ones actually held)

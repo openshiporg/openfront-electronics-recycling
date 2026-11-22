@@ -10,7 +10,7 @@
     "migrate:gen": "keystone build --no-ui && tsx features/keystone/view-order/generate-view-order.ts && keystone prisma migrate dev",
     "migrate": "prisma migrate deploy",
     "test": "node tests/run.cjs",
-    "seed:starter": "node scripts/seed-starter.cjs"
+    "setup": "node scripts/setup.cjs"
   },
   "dependencies": {
     "@ai-sdk/mcp": "^1.0.13",

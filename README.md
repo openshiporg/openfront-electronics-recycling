@@ -1,163 +1,125 @@
-# Next.js + KeystoneJS Starter
+# Openfront Electronics Recycling
 
-A modern full-stack application combining Next.js 15 with KeystoneJS 6, featuring admin dashboard implementation and sophisticated role-based permissions.
+Software for an electronics recycler or IT asset disposition (ITAD) company. It covers both halves of the business, and they share one inventory:
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fjunaid33%2Fnext-keystone-starter%2F&stores=[{"type"%3A"postgres"}])
+- **Selling.** Approved wholesale buyers sign in, look at lots with a line-by-line manifest, and bid. A lot can be sold by sealed bid (the default: buyers bid a lot total and staff award by hand), by open ascending auction, or at a fixed price. Buyers can also price each manifest line, online or by uploading the filled bid sheet, and staff can split the award between buyers. The winner gets an invoice, pays by card (Stripe) or bank transfer, and arranges pickup or freight.
+- **Collecting and processing.** A client company asks for a pickup. Staff quote it, collect under a signed chain of custody, receive and weigh it, audit each asset by serial number, record data destruction for every data-bearing device, issue certificates of recycling and data destruction, and settle with the client (fee for service, or a revenue share on what the assets sold for).
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/TK5wC1?referralCode=I_tWSs)
+One business runs one copy of the app, with as many facilities as it has.
 
-## Architecture Overview
+The app keeps records. It does not certify anyone and does not make a business compliant with R2, e-Stewards, NAID or any other standard. Certificates it produces state what the recycler recorded.
 
-This project features a **modern admin architecture** with:
+## Who uses it
 
-- **Backend**: KeystoneJS 6 providing GraphQL API, authentication, and database operations
-- **Frontend**: Custom Next.js admin dashboard with enhanced UI components
-- **Image Support**: S3-compatible image storage and management 
+| Who | Where | What they do |
+|---|---|---|
+| Wholesale buyers | Public site: `/lots`, `/buyers/apply`, `/buyer` | Apply for an account, accept the wholesale terms, browse lots, download manifests and bid sheets, bid, pay invoices, see orders and release details |
+| Client companies | Public site: `/recycle`, `/request-pickup`, `/client` | Ask for a pickup, follow a job, download certificates and settlement statements, pay service invoices |
+| Anyone | `/verify` | Check a certificate number against the issuing recycler's records |
+| Staff | `/dashboard` | Everything else, by role (below) |
 
-## Tech Stack
+Staff roles created by onboarding: Owner, Sales Manager, Client Manager, Dispatcher, Driver, Receiving, Technician, Compliance and Accounting. Each staff page and action checks the role's permissions on the server; the sidebar only shows what the role can use. The driver, receiving and audit screens work on a phone.
 
-### Frontend
-- **Next.js 15** with App Router
-- **React 19** with TypeScript
-- **Radix UI** primitives for accessible components
-- **Tailwind CSS 4** for styling
-- **Remix Icons** (@remixicon/react) for icons
-- **SWR** for client-side data fetching
-- **TipTap** for rich text editing
-- **React Hook Form** for form management
-- **Zod** for schema validation
+## Main flows
 
-### Backend
-- **KeystoneJS 6** for GraphQL API and admin interface
-- **Prisma ORM** for database operations
-- **GraphQL Yoga** for GraphQL server
-- **PostgreSQL** database
-- **S3-compatible storage** for image management
+**Sell a lot.** Import a manifest from Excel (`.xlsx`, `.xls`, `.csv`: the app finds the header row, proposes the column mapping, shows each row's errors, lets you correct a row, then commits) or build a lot from audited assets. Group lots into a sale event, publish, take bids until the close time, award, and the order and invoice are created. Lots close on time without any scheduler to set up.
 
-### Key Features
-- **Role-based access control** with granular permissions
-- **Dynamic field controllers** with conditional behavior
-- **Rich text editing** with document fields
-- **Relationship management** with inline editing capabilities
-- **Image upload and management** with S3 storage
-- **Inline create/edit components** for seamless UX
-- **Advanced filtering system** for all field types
-- **Responsive design** with mobile support
+**Approve buyers.** Applications arrive with documents (resale certificate, export licence where needed). Staff approve or decline, set a spend limit and tax status, and can suspend a buyer who does not pay.
 
-## Getting Started
+**Get paid.** Card payments go through Stripe on the invoice page when Stripe keys are set. Bank transfers (wire or ACH) are always available: the invoice shows the recycler's transfer instructions and accounting records the payment when it arrives. Refunds, invoice voids and an accounting CSV export are on the Money pages.
 
-### Prerequisites
-- Node.js 18+ 
-- PostgreSQL database
+**Run a job.** Pickup request, quote, schedule, driver collection with signatures, receiving and weighing, per-serial audit with grades, sanitisation records (upload the erasure tool's report and match it by serial number), verification, certificates, downstream shipments, mass balance and the settlement statement. Assets that pass go to the ready-for-sale stock and can be put on a lot. A data-bearing asset cannot be sold or put on a lot until its sanitisation has passed.
 
-### Setup
+`docs/FEATURE-MATRIX.md` lists every capability with the operation and page that provide it. `docs/STOREFRONT-MATRIX.md` covers the public site.
 
-1. **Clone and install dependencies:**
-   ```bash
-   git clone https://github.com/junaid33/next-keystone-starter
-   cd next-keystone-starter
-   npm install
-   ```
+## Running it
 
-2. **Configure environment variables:**
-   ```bash
-   cp env.example .env
-   ```
-   
-   Update `.env` with your database configuration:
-   ```env
-   DATABASE_URL=postgresql://username:password@localhost:5432/database_name
-   SESSION_SECRET=your-super-secret-session-key-change-this-in-production
-   ```
+Requirements: Node 20 or newer and a PostgreSQL database.
 
-3. **Start development server:**
-   ```bash
-   npm run dev
-   ```
-
-   This will:
-   - Build KeystoneJS schema
-   - Run database migrations
-   - Start Next.js development server with Turbopack
-
-4. **Access the application:**
-   - Frontend: [http://localhost:3000](http://localhost:3000)
-   - Dashboard: [http://localhost:3000/dashboard](http://localhost:3000/dashboard)
-   - GraphQL API: [http://localhost:3000/api/graphql](http://localhost:3000/api/graphql)
-
-## Development Commands
-
-- `npm run dev` - Build Keystone + migrate + start Next.js dev server
-- `npm run build` - Build Keystone + migrate + build Next.js for production
-- `npm run migrate:gen` - Generate and apply new database migrations
-- `npm run migrate` - Deploy existing migrations to database
-- `npm run lint` - Run ESLint
-
-## API Endpoints
-
-### GraphQL API
-- **Endpoint**: `/api/graphql`
-- **Features**: Full CRUD operations, relationships, authentication
-- **Playground**: Available in development mode
-
-## Data Models
-
-### Core Models
-- **User** - Authentication and user management
-- **Role** - Role-based access control
-- **Todo** - Example content model with relationships
-- **TodoImage** - Image management for Todo items with S3 storage
-
-### Permission System
-Sophisticated role-based permissions including:
-- `canAccessDashboard`, `canManagePeople`, `canManageRoles`
-- `canCreateTodos`, `canManageAllTodos`
-- `canSeeOtherPeople`, `canEditOtherPeople`
-
-## Project Structure
-
-```
-├── app/                    # Next.js App Router
-│   ├── api/
-│   │   └── graphql.ts     # GraphQL API endpoint
-│   └── dashboard/         # Admin dashboard pages
-├── features/
-│   ├── keystone/          # Backend configuration
-│   │   ├── models/        # Keystone list definitions
-│   │   ├── access.ts      # Permission logic
-│   │   └── mutations/     # Custom GraphQL mutations
-│   └── dashboard/         # Admin interface implementation
-│       ├── actions/       # Server actions
-│       ├── components/    # Reusable UI components
-│       ├── screens/       # Page-level components
-│       └── views/         # Field type implementations
-├── keystone.ts            # KeystoneJS configuration
-└── schema.prisma          # Database schema
+```bash
+npm install
+cp .env.example .env    # then fill in the values below
+npm run dev             # builds the schema, applies migrations, starts on http://localhost:3000
 ```
 
-## Development Notes
+Production:
 
-- **GraphQL endpoint** available at `/api/graphql`
-- **Field implementations** follow KeystoneJS controller patterns
-- **Permission checks** are integrated throughout the UI layer
-- **Server actions** used for data mutations in dashboard components
-- **Inline editing** components provide seamless UX for relationship management
-- **Image uploads** configured for S3-compatible storage
-- **Advanced filtering** supports all field types including documents, JSON, and images
+```bash
+keystone build --no-ui && next build     # build
+npm run migrate && next start            # start: applies pending migrations, then serves
+```
 
-## Deployment
+`railway.toml` uses these same two commands.
 
-The application can be deployed to any platform supporting Node.js and PostgreSQL:
+### Environment variables
 
-1. Set up PostgreSQL database
-2. Configure environment variables
-3. Run `npm run build`
-4. Run `npm start`
+Required:
 
-## Contributing
+| Variable | What it is |
+|---|---|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `SESSION_SECRET` | At least 32 random characters, used to sign sign-in cookies. Set it on every deployment. |
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Run tests and linting
-5. Submit a pull request
+Optional:
+
+| Variable | What it turns on |
+|---|---|
+| `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY` (or `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`) | Card payments on invoices. Without them the invoice page offers bank transfer only and says card is not set up. |
+| `STRIPE_WEBHOOK_SECRET` | Lets Stripe confirm payments to `/api/payment-webhooks/stripe` as well as the check made when the buyer returns from paying |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | Outgoing email. These can also be set on the Store settings page. Without them every notice still appears in the person's notification list, every action still works, and password-reset email is not sent. |
+| `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` | The assistant panel in the dashboard |
+| `PUBLIC_SIGNUPS_ALLOWED=true` | Opens the dashboard sign-up page to anyone. Leave it unset: staff are invited by the owner. Buyers and clients have their own sign-up on the public site. |
+
+No other variable is needed for any action to work. The public site address used in email links and PDFs is set during onboarding (it defaults to the address onboarding is run from) and can be changed on the Store settings page.
+
+## First run
+
+1. Open `/dashboard`. On an empty database it goes to `/dashboard/init`, where you create the first account. That account is the owner and has every permission.
+2. Open **Settings → Onboarding** and enter the business name, support email and phone, time zone, weight unit, bank transfer instructions and the first facility's address. Tick only the certifications the business actually holds, each with its certificate number. Onboarding creates the nine staff roles, the material categories and grades, the service price list, the wholesale and service terms, and the payment providers.
+3. Onboarding can also add a set of example clients, buyers, jobs, lots and a completed sale with logins for each portal, so staff can see every screen with records in it. Leave that box unticked for a business going live.
+4. Invite staff from **Settings → Team and roles**, set the store rules (bid increments, buyer premium, sales tax, payment and removal days) on **Store settings**, and add Stripe keys if you take cards.
+
+The same setup can be run from the command line on an empty database:
+
+```bash
+DATABASE_URL=... node scripts/setup.cjs --owner-email you@yourcompany.com \
+  --business "Your Company" --out ~/owner-login.json
+```
+
+It writes the generated owner password only to the `--out` file (mode 600). Add `--full` for the example records. Add `--certification "R2v3|R2-12345|SERI|2028-03-31"` once per certification the business holds.
+
+## Tests
+
+```bash
+npm test
+```
+
+The tests run against a real PostgreSQL database: set `TEST_DATABASE_URL`, or `OPENFRONT_SCRATCH_DB_BASE` (a server URL without a database name; the tests use the `scratch_openfront_electronics_recycling_tests` database on it). Without a database, the database tests are skipped and the pure rule tests still run. They cover the bidding rules and races (two buyers at once, two staff awarding at once), payments and webhook replay, the job state machine, the sanitisation gate, certificates, settlements, manifest import, onboarding, access by role, and the MCP OAuth endpoints.
+
+## What it does not do
+
+- No proxy (maximum) bidding in open auctions.
+- No counter-offers or negotiation threads. Staff can decline and relist, or award below the reserve.
+- No bidding deposits or buyer credit balances. Non-payment leads to strikes and suspension instead.
+- No listing to eBay, Amazon or BrokerBin, and no unit-by-unit retail shop.
+- No parts harvesting with bills of materials. Pulled drives are tracked as child assets.
+- No automatic pricing or market-value feeds. Staff enter values.
+- It does not erase drives and does not connect to erasure tools directly. It files the reports those tools export.
+- No route optimisation and no native driver app. The driver screen is a phone-sized web page.
+- No freight quotes or label printing. Buyers arrange their own freight.
+- No tax engine. Sales tax is one flat rate, with exemption by resale certificate.
+- One currency per deployment, and no public-holiday calendar. Due dates can be extended by hand.
+- No Stripe ACH debit. Card through Stripe, plus wire and ACH recorded by accounting.
+- One business per deployment. It is not multi-tenant hosting.
+- No consumer mail-in kits or collection events.
+- No UK waste transfer notes or EU WEEE returns. It is built for US operations first.
+- It never claims to certify anyone or make a business compliant. It keeps the records an auditor asks for.
+
+## Code layout
+
+- `features/keystone/models`: the lists (database tables) and their field rules.
+- `features/keystone/domain`: the business operations (bidding, awards, payments, jobs, certificates, settlements and so on). `features/keystone/mutations/operations.ts` exposes each one as a GraphQL operation with its permission check.
+- `features/keystone/lib/rules`: pure rule functions (bid validation, money, dates, spreadsheets), tested without a database.
+- `features/platform`: the staff dashboard pages. `app/dashboard` holds thin route files.
+- `app/(storefront)` and `features/storefront`: the public site for buyers and clients.
+- `migrations`: Prisma migrations, applied with `npm run migrate`.
