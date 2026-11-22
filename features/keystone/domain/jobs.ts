@@ -218,6 +218,8 @@ export async function scheduleJob(context: Ctx, args: { jobId: string; date: str
 
 function assertDriver(context: Ctx, job: any) {
   const role = context.session?.data?.role
+  // A drop-off is handed over at the dock: receiving records it like a collection.
+  if (!role?.canCollect && !role?.canDispatch && !(role?.canReceive && job.type === 'drop_off')) fail('Only the driver or dispatch can record a collection.')
   if (job.driverId && job.driverId !== context.session!.itemId && !role?.canDispatch) fail('This stop is assigned to another driver.')
 }
 

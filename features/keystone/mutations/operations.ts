@@ -136,8 +136,8 @@ export const OPERATIONS: Record<string, Op> = {
   setJobHold: m(['canManageJobs'], (c, i) => jobs.setJobHold(c, i)),
   invoiceJob: m(['canManageJobs', 'canManagePayments'], (c, i) => jobs.invoiceJob(c, i)),
   scheduleJob: m(['canDispatch'], (c, i) => jobs.scheduleJob(c, i)),
-  startJobRoute: m(['canCollect', 'canDispatch'], (c, i) => jobs.startJobRoute(c, i)),
-  collectJob: m(['canCollect', 'canDispatch'], (c, i) => jobs.collectJob(c, i)),
+  startJobRoute: m(['canCollect', 'canDispatch', 'canReceive'], (c, i) => jobs.startJobRoute(c, i)),
+  collectJob: m(['canCollect', 'canDispatch', 'canReceive'], (c, i) => jobs.collectJob(c, i)),
   receiveContainer: m(['canReceive'], (c, i) => jobs.receiveContainer(c, i)),
   resolveSealException: m(['canReceive', 'canIssueCertificates'], (c, i) => jobs.resolveSealException(c, i)),
 

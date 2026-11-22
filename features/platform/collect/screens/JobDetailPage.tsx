@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import { PlatformPage, can, day, label, usd, when } from '../../lib/page'
-import { OpButton, OpDrawer } from '../../lib/forms'
+import { DeleteButton, ItemDrawer, OpButton, OpDrawer } from '../../lib/forms'
 import { listQuery } from '../../lib/platformRequest'
 import { DataTable, Empty, Notice, Readouts, Section, Track, Td } from '../../lib/ui'
 import { Facts, RowLink, Status } from '../../lib/view'
@@ -15,12 +15,13 @@ const JOB = `query J($id: ID!) {
     serviceLines { id description quantity unitPriceMinor totalMinor kind }
     photos { id caption stage image { id filename } }
     containers(orderBy: [{ label: asc }]) { id label type sealNumber receivedSealNumber sealVerified sealException sealExceptionResolution itemCountDeclared grossWeight tareWeight netWeight status locationCode assetsCount }
-    commodityLines { id category { name } weight notes }
+    commodityLines { id category { id name } weight notes outboundLine { id } }
     custodyEvents(orderBy: [{ occurredAt: desc }], take: 30) { id type occurredAt actorName signerName locationText notes container { label } asset { assetNumber } }
     certificates(orderBy: [{ issuedAt: desc }]) { id certificateNumber type status issuedAt revokedReason }
     settlement { id settlementNumber status netMinor }
     invoices { id invoiceNumber kind status totalMinor balanceMinor }
   }
+  materialCategories(orderBy: [{ name: asc }], take: 200) { id name }
   users(where: { AND: [{ kind: { equals: staff } }, { isActive: { equals: true } }, { role: { canCollect: { equals: true } } }] }, orderBy: [{ name: asc }]) { id name }
 }`
 
@@ -41,6 +42,12 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
         const collect = can(staff, 'canCollect', 'canDispatch')
         const certs = can(staff, 'canIssueCertificates')
         const s = j.status
+        const commodity = can(staff, 'canAuditAssets', 'canReceive', 'canManageDownstream') && !['closed', 'cancelled', 'declined'].includes(s)
+        const commodityFields = (c?: any) => [
+          { name: 'category', label: 'Material', type: 'select' as const, relation: true, required: true, options: r.data.materialCategories.map((m: any) => ({ value: m.id, label: m.name })), defaultValue: c?.category?.id },
+          { name: 'weight', label: 'Weight', type: 'decimal' as const, required: true, defaultValue: c?.weight },
+          { name: 'notes', label: 'Notes', defaultValue: c?.notes },
+        ]
         const address = j.site ? [j.site.addressLine1, j.site.city, j.site.region, j.site.postalCode].filter(Boolean).join(', ') : j.siteAddress ? [j.siteAddress.addressLine1, j.siteAddress.city, j.siteAddress.region, j.siteAddress.postalCode].filter(Boolean).join(', ') : ''
         const quoteDefaults = j.serviceLines.length ? j.serviceLines.map((l: any) => [l.description, l.quantity, (l.unitPriceMinor / 100).toFixed(2), l.kind].join(' | ')).join('\n') : 'Pickup | 1 | 150.00 | pickup\nData destruction per drive | 1 | 8.00 | wipe'
         const quoteFields = [
@@ -106,7 +113,13 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                   {j.containers.map((c: any) => <tr key={c.id}><Td>{c.label} <span className="text-xs text-muted-foreground">{label(c.type)}</span></Td><Td>{c.sealNumber || '—'}{c.receivedSealNumber && c.receivedSealNumber !== c.sealNumber ? <div className="text-xs text-red-600">arrived {c.receivedSealNumber}</div> : null}{c.sealException ? <div className="text-xs text-red-600">{c.sealExceptionResolution ? `Resolved: ${c.sealExceptionResolution}` : 'Seal exception'}</div> : null}</Td><Td className="text-right tabular-nums">{c.netWeight ?? c.grossWeight ?? '—'}</Td><Td><Status value={c.status} />{c.locationCode ? <div className="text-xs text-muted-foreground">{c.locationCode}</div> : null}</Td><Td className="text-right tabular-nums">{c.assetsCount}</Td></tr>)}
                 </DataTable>
               ) : <Empty>Nothing collected yet.</Empty>}
-              {j.commodityLines.length ? <ul className="mt-2 text-sm">{j.commodityLines.map((c: any) => <li key={c.id}>{c.category?.name}: {c.weight}</li>)}</ul> : null}
+            </Section>
+            <Section title="Commodities by weight" count={j.commodityLines.length} actions={commodity ? <ItemDrawer listKey="CommodityLine" fixed={{ job: { connect: { id: j.id } } }} title="Add a commodity line" description="Material that is recycled by weight, not audited per serial." trigger="Add commodity" fields={commodityFields()} /> : null}>
+              {j.commodityLines.length ? (
+                <DataTable label="Commodity lines" head={[{ label: 'Material' }, { label: 'Weight', className: 'text-right' }, { label: 'Notes' }, { label: 'Shipped' }, { label: '' }]}>
+                  {j.commodityLines.map((c: any) => <tr key={c.id}><Td>{c.category?.name ?? '—'}</Td><Td className="text-right tabular-nums">{c.weight}</Td><Td>{c.notes}</Td><Td>{c.outboundLine ? 'Yes' : '—'}</Td><Td className="whitespace-nowrap text-right">{commodity && !c.outboundLine ? <><ItemDrawer listKey="CommodityLine" id={c.id} title="Edit commodity line" trigger="Edit" fields={commodityFields(c)} /><DeleteButton listKey="CommodityLine" id={c.id} label="Remove" confirm="Remove this commodity line?" /></> : null}</Td></tr>)}
+                </DataTable>
+              ) : <Empty>No commodity lines.</Empty>}
             </Section>
             <Section title="Certificates" count={j.certificates.length} actions={certs && ['completed', 'settled', 'closed'].includes(s) ? <Track>
               <OpButton op="issueCertificate" input={{ jobId: j.id, type: 'data_destruction' }} label="Issue data destruction certificate" />

@@ -20,7 +20,7 @@ import { deleteItem, readOperation, runOperation, saveItem, type ActionResult } 
 export type FieldSpec = {
   name: string
   label: string
-  type?: 'text' | 'textarea' | 'number' | 'money' | 'percent' | 'date' | 'datetime' | 'time' | 'select' | 'multiselect' | 'checkbox' | 'file' | 'files' | 'email' | 'hidden' | 'lines' | 'json' | 'document' | 'list'
+  type?: 'text' | 'textarea' | 'number' | 'money' | 'percent' | 'date' | 'datetime' | 'time' | 'select' | 'multiselect' | 'checkbox' | 'file' | 'files' | 'email' | 'hidden' | 'lines' | 'json' | 'document' | 'list' | 'decimal'
   /** Keystone relationship: a select becomes { connect: { id } }, a multiselect { set: [...] }. */
   relation?: boolean
   options?: Array<{ value: string; label: string }>
@@ -68,6 +68,7 @@ export async function collect(form: FormData, fields: FieldSpec[], forUpdate = f
       }
       case 'multiselect': out[f.name] = form.getAll(f.name).map(String); break
       case 'document': out[f.name] = textToDocument(String(raw ?? '')); break
+      case 'decimal': out[f.name] = raw === '' || raw === null ? null : String(raw); break
       case 'list': out[f.name] = String(raw ?? '').split(/[\n,]/).map((l) => l.trim()).filter(Boolean); break
       case 'json': {
         try { out[f.name] = raw ? JSON.parse(String(raw)) : null } catch { throw new Error(`${f.label} is not valid JSON.`) }
@@ -183,8 +184,8 @@ export function Inputs({ fields, prefix }: { fields: FieldSpec[]; prefix: string
         )
         else if (f.type === 'file' || f.type === 'files') control = <Input id={id} name={f.name} type="file" multiple={f.type === 'files'} required={f.required} accept={f.accept} />
         else {
-          const type = f.type === 'money' || f.type === 'percent' || f.type === 'number' ? 'number' : f.type === 'datetime' ? 'datetime-local' : f.type || 'text'
-          const step = f.type === 'money' || f.type === 'percent' ? '0.01' : f.type === 'number' ? 'any' : undefined
+          const type = f.type === 'money' || f.type === 'percent' || f.type === 'number' || f.type === 'decimal' ? 'number' : f.type === 'datetime' ? 'datetime-local' : f.type || 'text'
+          const step = f.type === 'money' || f.type === 'percent' || f.type === 'decimal' ? '0.01' : f.type === 'number' ? 'any' : undefined
           control = <Input id={id} name={f.name} type={type} step={step} inputMode={step ? 'decimal' : undefined} required={f.required} defaultValue={initial(f)} placeholder={f.placeholder} className={f.type === 'money' ? 'font-mono' : undefined} />
         }
         return <Field key={f.name} id={id} label={f.label} wide={f.wide || f.type === 'textarea' || f.type === 'lines' || f.type === 'json' || f.type === 'document'} hint={f.hint}>{control}</Field>
@@ -244,17 +245,26 @@ export function OpForm({ op, fields, fixed, submitLabel = 'Save', onResult, clas
 }
 
 /** Drawer that runs one domain command. */
-export function OpDrawer({ trigger, title, description, triggerVariant = 'raised', ...props }: OpProps & { trigger: ReactNode; title: string; description?: string; triggerVariant?: PillVariant; idempotent?: boolean }) {
+export function OpDrawer({ trigger, title, description, triggerVariant = 'raised', selection, onResultHref, ...props }: OpProps & { trigger: ReactNode; title: string; description?: string; triggerVariant?: PillVariant; idempotent?: boolean; selection?: string; onResultHref?: string }) {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [key, setKey] = useState(() => String(Date.now()) + Math.random().toString(36).slice(2))
+  const [picked, setPicked] = useState<string[]>([])
   const { submit, pending, error } = useSubmit(async (form) => {
     const values = await collect(form, props.fields)
-    const input = { ...(props.fixed ?? {}), ...values, ...(props.idempotent ? { idempotencyKey: key } : {}) }
+    const input = { ...(props.fixed ?? {}), ...values, ...(selection ? { [selection]: picked } : {}), ...(props.idempotent ? { idempotencyKey: key } : {}) }
     return props.read ? readOperation(props.op, input) : runOperation(props.op, input)
-  }, (result) => { setOpen(false); setKey(String(Date.now()) + Math.random().toString(36).slice(2)); props.onResult?.(result) })
+  }, (result) => {
+    setOpen(false); setKey(String(Date.now()) + Math.random().toString(36).slice(2)); props.onResult?.(result)
+    const id = (result.data as any)?.id
+    if (onResultHref && id) router.push(onResultHref.replace('{id}', encodeURIComponent(id)))
+  })
   return (
     <>
-      <Pill size="sm" variant={triggerVariant} onClick={() => setOpen(true)}>{trigger}</Pill>
+      <Pill size="sm" variant={triggerVariant} onClick={() => {
+        if (selection) setPicked([...document.querySelectorAll<HTMLInputElement>(`input[type=checkbox][data-select="${selection}"]:checked`)].map((x) => x.value))
+        setOpen(true)
+      }}>{trigger}</Pill>
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
           <SheetHeader>
@@ -262,6 +272,7 @@ export function OpDrawer({ trigger, title, description, triggerVariant = 'raised
             {description ? <SheetDescription>{description}</SheetDescription> : null}
           </SheetHeader>
           <form onSubmit={submit} className="grid gap-4 px-4 pb-6 sm:grid-cols-2">
+            {selection ? <p className="text-sm sm:col-span-2">{picked.length ? `${picked.length} selected.` : 'Tick at least one row in the list first.'}</p> : null}
             <Inputs fields={props.fields} prefix={props.op} />
             {error ? <Notice tone="alert" className="sm:col-span-2">{error}</Notice> : null}
             <Track className="sm:col-span-2">
@@ -364,4 +375,9 @@ export function SaveButton({ listKey, id, data, label, variant = 'raised' }: { l
       {error ? <span role="alert" className="text-xs text-destructive">{error}</span> : null}
     </span>
   )
+}
+
+/** Header checkbox that ticks every row checkbox of one selection group (see OpDrawer selection). */
+export function SelectAll({ group, label = 'Select all' }: { group: string; label?: string }) {
+  return <input type="checkbox" aria-label={label} onChange={(e) => document.querySelectorAll<HTMLInputElement>(`input[type=checkbox][data-select="${group}"]`).forEach((x) => { x.checked = e.target.checked })} />
 }

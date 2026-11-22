@@ -64,7 +64,7 @@ test('every operation a screen runs exists, as a mutation or (with read) a query
     // <OpButton|OpDrawer ... op="x" ... read ...> : read must match the op kind.
     for (const m of src.matchAll(/<Op(?:Button|Drawer|Form)\b([^>]*?)\bop="(\w+)"([^>]*)/g)) {
       const name = m[2]
-      const read = /\bread\b(?!Only)/.test(m[1] + m[3].split(/\/>|\bfields=/)[0])
+      const read = /(?:^|\s)read(?=\s|\/|$)/.test(m[1] + m[3].split(/\/>|\bfields=/)[0])
       if (!kind.has(name)) problems.push(`${where}: ${name} does not exist`)
       else if (kind.get(name) === 'q' && !read) problems.push(`${where}: ${name} is a query; add read`)
       else if (kind.get(name) === 'm' && read) problems.push(`${where}: ${name} is a mutation; remove read`)

@@ -66,7 +66,7 @@ export function ManifestMapper({ importId, headers, mapping, sheetNames, sheetNa
 }
 
 /** Upload drawer that opens the new import for mapping. */
-export function UploadManifest({ fields, title, description, trigger, fixed }: { fields: FieldSpec[]; title: string; description: string; trigger: string; fixed?: Record<string, unknown> }) {
+export function UploadManifest({ fields, title, description, trigger, fixed, op = 'uploadManifest' }: { fields: FieldSpec[]; title: string; description: string; trigger: string; fixed?: Record<string, unknown>; op?: 'uploadManifest' | 'importAssets' }) {
   const router = useRouter()
-  return <OpDrawer op="uploadManifest" title={title} description={description} trigger={trigger} triggerVariant="primary" fields={fields} fixed={fixed} submitLabel="Upload" onResult={(r) => { const id = (r.data as any)?.id; if (id) router.push(`/dashboard/platform/manifest-imports?import=${id}`) }} />
+  return <OpDrawer op={op} title={title} description={description} trigger={trigger} triggerVariant="primary" fields={fields} fixed={fixed} submitLabel="Upload" onResult={(r) => { const id = (r.data as any)?.id; if (id) router.push(`/dashboard/platform/manifest-imports?import=${id}`) }} />
 }
