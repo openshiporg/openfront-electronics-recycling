@@ -27,6 +27,16 @@ starter password; the owner set a new one for each on the Team page (stored outs
 | --- | --- | --- | --- | --- | --- |
 | S6 upload + map | Manifest imports | Sales manager | done (402) | import `Meridian-Health-ITAD-manifest-Nov-2026.xlsx` | Title block above the header: header row 4 found, all 12 columns proposed correctly; 14 lines, 13 ready, row 17 refused in plain words (quantity "twelve", no description) |
 | S6 fix bad row in preview | Manifest imports | Sales manager | waiting on backend | | No operation edits one row; asked the backend builder for `editManifestRow` |
+| S6 commit | Manifest imports | Sales manager | done (402) | lot L-2026-1009 `cmwrzjgyj0005uzg572smdiqt` | Committed skipping row 17 into the November enterprise IT sale |
+| S8/S10 terms + details | Lot page | Sales manager | done (402) | L-2026-1009 | Weight is now a decimal field labelled "Weight (lb)" (was refused: "Decimal only accepts strings"); close time typed and shown in store time ("Closes (EST)") instead of the browser zone; Closes readout wrapped instead of cut off |
+| S11 publish | Lot page | Sales manager | done (402) | L-2026-1009 | |
+| S12 phoned-in bid | Lot page | Sales manager | done (402) | Northgate $11,850 | Sales sees "1 sealed bid" only; Owner (sealed-amount permission) sees the row |
+| Close | (clock) | — | done | closed 16:24:26Z | Closed itself on time |
+| S13 award | Lot page | Sales manager | done (402) | order SO-001005, invoice INV-001006 | Confirm names the buyer, amount and that an invoice goes out |
+| M2 offline payment | Payments | Accounting | done (402) | wire $11,850 on INV-001006 | Invoice and amount preselected from the order link; "Received on" defaulted to the server's UTC day, now today at the store (also dock, export, certifications, downstream); "Ach" now "ACH" |
+| S15 dock booking | Dock calendar | Sales manager | done (402) | SO-001005, Nov 23 10:30 AM | Booked from the slot's own Book button. The top "Book a slot" default (9:00) is a wall-clock value and is now kept as store time rather than read in the browser's zone; footnote names the zone in words |
+| S17/S18 ready + release | Order page | Sales manager | done (402) | SO-001005 released to Luis Ortega, BOL NGR-BOL-112263, signed | |
+| S19 claim | Claims | Sales manager | done (402) | CLM-01001, $98.74 partial refund succeeded | Refund-against now preselects the only payment; facts two columns at 402, undecided fields hidden until decided, lines read "Line 6, 2 units: …" |
 | Audit log | Audit log | Owner | done | | Plain-word actions, record links, before/after as key: value, no raw ids or JSON, search fits 402; local `::1` addresses hidden |
 | Custody notes | Custody log | Owner | done | | Underscore values in notes shown as words |
 | Storefront bid sheet (item 6) | Lot page | Buyer | done | | `previewBidSheet` → `checkBidSheet` |
