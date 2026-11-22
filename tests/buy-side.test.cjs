@@ -167,6 +167,31 @@ test('certificates: blocked until every data-bearing asset passes; issue, verify
   assert.equal((await ctx.prisma.job.findUnique({ where: { id: jobId } })).status, 'completed')
 })
 
+test('sanitisation gate on a direct list write: updateAsset cannot make an unsanitised data-bearing asset ready for sale or put it on a lot', { skip }, async () => {
+  const { jobId } = await job()
+  const laptops = await category('Laptops', true)
+  const a = await asset(jobId, laptops)
+  const lot = await f.lot(ctx.prisma, { status: 'draft' })
+  assert.equal(a.sanitizationStatus, 'pending')
+  // 1. GraphQL updateAsset as a staff member with every permission: status and lotLine are not writable fields.
+  const gql = (query, variables) => staffCtx.graphql.raw({ query, variables })
+  const viaStatus = await gql('mutation($id: ID!) { updateAsset(where: { id: $id }, data: { status: ready_for_sale }) { id status } }', { id: a.id })
+  assert.ok(viaStatus.errors?.length, 'status is refused by the API')
+  const viaLine = await gql('mutation($id: ID!, $line: ID!) { updateAsset(where: { id: $id }, data: { lotLine: { connect: { id: $line } } }) { id } }', { id: a.id, line: lot.lines[0].id })
+  assert.ok(viaLine.errors?.length, 'lotLine is refused by the API')
+  // 2. The same writes through sudo (field access off) still hit the validate hook.
+  await assert.rejects(ctx.sudo.db.Asset.updateOne({ where: { id: a.id }, data: { status: 'ready_for_sale' } }), /has not passed sanitisation/)
+  await assert.rejects(ctx.sudo.db.Asset.updateOne({ where: { id: a.id }, data: { lotLine: { connect: { id: lot.lines[0].id } } } }), /has not passed sanitisation/)
+  await assert.rejects(ctx.sudo.db.Asset.createOne({ data: { job: { connect: { id: jobId } }, isDataBearing: true, sanitizationStatus: 'pending', status: 'ready_for_sale', serialNumber: `SN${uid()}` } }), /has not passed sanitisation/)
+  const after = await ctx.prisma.asset.findUnique({ where: { id: a.id } })
+  assert.equal(after.status, 'audited')
+  assert.equal(after.lotLineId, null)
+  // 3. Once it passes, the same sudo write is allowed: the hook blocks the rule, not the field.
+  await proc.recordSanitization(staffCtx, { assetIds: [a.id], method: 'purge', technique: 'crypto_erase', result: 'passed' })
+  await ctx.sudo.db.Asset.updateOne({ where: { id: a.id }, data: { status: 'ready_for_sale' } })
+  assert.equal((await ctx.prisma.asset.findUnique({ where: { id: a.id } })).status, 'ready_for_sale')
+})
+
 function xlsx(rows) {
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Manifest')
