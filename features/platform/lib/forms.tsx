@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
 import { Notice, Pill, Track, selectClass, type PillVariant } from './ui'
-import { deleteItem, runOperation, saveItem, type ActionResult } from './actions'
+import { deleteItem, readOperation, runOperation, saveItem, type ActionResult } from './actions'
 
 /*
  * Platform form kit (adapted from Openfront Barbershop): a right-hand drawer or an
@@ -20,7 +20,7 @@ import { deleteItem, runOperation, saveItem, type ActionResult } from './actions
 export type FieldSpec = {
   name: string
   label: string
-  type?: 'text' | 'textarea' | 'number' | 'money' | 'percent' | 'date' | 'datetime' | 'time' | 'select' | 'multiselect' | 'checkbox' | 'file' | 'files' | 'email' | 'hidden' | 'lines' | 'json' | 'document'
+  type?: 'text' | 'textarea' | 'number' | 'money' | 'percent' | 'date' | 'datetime' | 'time' | 'select' | 'multiselect' | 'checkbox' | 'file' | 'files' | 'email' | 'hidden' | 'lines' | 'json' | 'document' | 'list'
   /** Keystone relationship: a select becomes { connect: { id } }, a multiselect { set: [...] }. */
   relation?: boolean
   options?: Array<{ value: string; label: string }>
@@ -68,6 +68,7 @@ export async function collect(form: FormData, fields: FieldSpec[], forUpdate = f
       }
       case 'multiselect': out[f.name] = form.getAll(f.name).map(String); break
       case 'document': out[f.name] = textToDocument(String(raw ?? '')); break
+      case 'list': out[f.name] = String(raw ?? '').split(/[\n,]/).map((l) => l.trim()).filter(Boolean); break
       case 'json': {
         try { out[f.name] = raw ? JSON.parse(String(raw)) : null } catch { throw new Error(`${f.label} is not valid JSON.`) }
         break
@@ -116,6 +117,7 @@ function initial(f: FieldSpec): string {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
   }
   if (f.type === 'json') return typeof dv === 'string' ? dv : JSON.stringify(dv, null, 2)
+  if (f.type === 'list') return Array.isArray(dv) ? dv.join('\n') : String(dv)
   return String(dv)
 }
 
@@ -172,7 +174,7 @@ export function Inputs({ fields, prefix }: { fields: FieldSpec[]; prefix: string
             </fieldset>
           )
         }
-        if (f.type === 'textarea' || f.type === 'lines' || f.type === 'json' || f.type === 'document') control = <Textarea id={id} name={f.name} required={f.required} defaultValue={initial(f)} placeholder={f.placeholder} rows={f.type === 'textarea' ? 3 : 5} className={f.type === 'lines' || f.type === 'json' ? 'font-mono text-xs' : undefined} />
+        if (f.type === 'textarea' || f.type === 'lines' || f.type === 'json' || f.type === 'document' || f.type === 'list') control = <Textarea id={id} name={f.name} required={f.required} defaultValue={initial(f)} placeholder={f.placeholder} rows={f.type === 'textarea' ? 3 : 5} className={f.type === 'lines' || f.type === 'json' ? 'font-mono text-xs' : undefined} />
         else if (f.type === 'select') control = (
           <select id={id} name={f.name} required={f.required} defaultValue={initial(f)} className={selectClass}>
             {!f.required ? <option value="">—</option> : null}
@@ -220,6 +222,8 @@ type OpProps = {
   fixed?: Record<string, unknown>
   submitLabel?: string
   onResult?: (result: ActionResult) => void
+  /** The op is a query (reports): run it read-only. */
+  read?: boolean
 }
 
 /** Inline form that runs one domain command. */
@@ -246,7 +250,7 @@ export function OpDrawer({ trigger, title, description, triggerVariant = 'raised
   const { submit, pending, error } = useSubmit(async (form) => {
     const values = await collect(form, props.fields)
     const input = { ...(props.fixed ?? {}), ...values, ...(props.idempotent ? { idempotencyKey: key } : {}) }
-    return runOperation(props.op, input)
+    return props.read ? readOperation(props.op, input) : runOperation(props.op, input)
   }, (result) => { setOpen(false); setKey(String(Date.now()) + Math.random().toString(36).slice(2)); props.onResult?.(result) })
   return (
     <>
@@ -304,7 +308,7 @@ export function ItemDrawer({ listKey, id, fields, fixed, trigger, title, descrip
 }
 
 /** One-click command, with an optional confirm step. */
-export function OpButton({ op, input, label, variant = 'raised', confirm, size = 'sm' }: { op: string; input: Record<string, unknown>; label: string; variant?: PillVariant; confirm?: string; size?: 'sm' | 'md' }) {
+export function OpButton({ op, input, label, variant = 'raised', confirm, size = 'sm', read }: { op: string; input: Record<string, unknown>; label: string; variant?: PillVariant; confirm?: string; size?: 'sm' | 'md'; read?: boolean }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -314,7 +318,7 @@ export function OpButton({ op, input, label, variant = 'raised', confirm, size =
         if (confirm && !window.confirm(confirm)) return
         setError(null)
         startTransition(async () => {
-          const result = await runOperation(op, input)
+          const result = read ? await readOperation(op, input) : await runOperation(op, input)
           if (!result.success) { setError(result.error || 'This couldn’t be done.'); return }
           offerDownload(result.data)
           router.refresh()
