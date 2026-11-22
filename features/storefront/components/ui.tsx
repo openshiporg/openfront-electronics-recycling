@@ -67,7 +67,7 @@ export function LoadError({ message }: { message: string }) {
   )
 }
 
-const GOOD = new Set(['approved', 'paid', 'won', 'completed', 'released', 'confirmed', 'captured', 'accepted', 'issued', 'closed', 'settled', 'ready_for_release'])
+const GOOD = new Set(['valid', 'approved', 'paid', 'won', 'completed', 'released', 'confirmed', 'captured', 'accepted', 'issued', 'closed', 'settled', 'ready_for_release'])
 const BAD = new Set(['rejected', 'suspended', 'lost', 'void', 'defaulted', 'cancelled', 'canceled', 'failed', 'revoked', 'declined', 'expired', 'withdrawn'])
 const ATTN = new Set(['needs_info', 'awaiting_payment', 'open', 'quoted', 'reported', 'requires_action', 'partially_paid', 'active', 'submitted'])
 
