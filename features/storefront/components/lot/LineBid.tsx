@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation'
 import { FileSpreadsheet, Upload } from 'lucide-react'
 import { DownloadButton } from './DownloadButton'
 import { newKey } from './BidPanel'
-import { placeBidAction, placeBidFromSheetAction, previewBidSheetAction } from '../../lib/actions/lots'
+import { placeBidAction, placeBidFromSheetAction, checkBidSheetAction } from '../../lib/actions/lots'
 import { money, toMinor } from '../../lib/format'
 
 type Line = { id: string; lineNumber: number; manufacturer: string; model: string; description: string; cosmeticGrade: string; functionalGrade: string; quantity: number }
@@ -57,7 +57,7 @@ export function LineBid({ lotNumber, lines, currency, open, mayBid, myLines }: {
     setBusy(true)
     try {
       const f = await readFile(file)
-      const r = await previewBidSheetAction(lotNumber, f)
+      const r = await checkBidSheetAction(lotNumber, f)
       if (!r.ok) setError(r.error)
       else setSheet({ file: f, preview: r.data })
     } catch (e) { setError((e as Error).message) }
