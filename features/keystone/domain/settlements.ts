@@ -1,7 +1,7 @@
 import { audit, fail, inTransaction, lockRow, nextNumber, str, type Ctx, type Tx } from '../lib/core'
 import { formatMinor, settlementTotals } from '../lib/rules/money'
 import { renderPdf } from '../lib/pdf'
-import { afterCommit, getSettings, notify, organizationUsers, storeFile } from '../lib/services'
+import { afterCommit, getSettings, moneyText, notify, organizationUsers, storeFile } from '../lib/services'
 import { createInvoice } from './money'
 
 // Client settlement (§3.6): draft -> in_review -> published -> disputed -> paid -> closed.
@@ -131,7 +131,7 @@ export async function publishSettlement(context: Ctx, args: { settlementId: stri
       await createInvoice(tx, { kind: 'settlement', clientOrganizationId: org.id, jobId: job?.id ?? null, settlementId: s.id, lines: [{ kind: 'service', description: `Settlement ${s.settlementNumber}${job ? ` for ${job.jobNumber}` : ''}`, quantity: 1, unitPriceMinor: -updated.netMinor, totalMinor: -updated.netMinor }], billTo: { legalName: org.legalName || org.name, addressLine1: org.addressLine1, city: org.city, region: org.region, postalCode: org.postalCode, countryCode: org.countryCode, email: org.billingEmail } })
     }
     if (job && job.status === 'completed') await tx.job.update({ where: { id: job.id }, data: { status: 'settled' } })
-    await notify(tx, { userIds: await organizationUsers(tx, s.organizationId), type: 'settlement_published', title: `Settlement ${s.settlementNumber} is ready`, body: updated.netMinor >= 0 ? `We owe you ${formatMinor(updated.netMinor)}. Reply to this email if anything looks wrong.` : `The balance due is ${formatMinor(-updated.netMinor)}; an invoice is on your account.`, link: job ? `/client/jobs/${job.jobNumber}` : '/client' })
+    await notify(tx, { userIds: await organizationUsers(tx, s.organizationId), type: 'settlement_published', title: `Settlement ${s.settlementNumber} is ready`, body: updated.netMinor >= 0 ? `We owe you ${await moneyText(tx, updated.netMinor)}. Reply to this email if anything looks wrong.` : `The balance due is ${await moneyText(tx, -updated.netMinor)}; an invoice is on your account.`, link: job ? `/client/jobs/${job.jobNumber}` : '/client' })
     await audit(tx, { actorId: context.session!.itemId, action: 'settlement.published', entityType: 'Settlement', entityId: s.id, after: { netMinor: updated.netMinor } })
     return updated
   })
@@ -159,7 +159,7 @@ export async function recordSettlementPayout(context: Ctx, args: { settlementId:
     if (s.status !== 'published') fail(s.status === 'disputed' ? 'Resolve the dispute and republish first.' : `Settlement is ${s.status}.`)
     if (s.netMinor < 0) fail('The client owes this balance; it closes when their invoice is paid.')
     const updated = await tx.settlement.update({ where: { id: s.id }, data: { status: 'paid', payoutMethod: method, payoutReference: reference, paidAt: new Date() } })
-    await notify(tx, { userIds: await organizationUsers(tx, s.organizationId), type: 'settlement_paid', title: `Settlement ${s.settlementNumber} paid`, body: `${formatMinor(s.netMinor)} sent by ${method} (${reference}).`, link: '/client' })
+    await notify(tx, { userIds: await organizationUsers(tx, s.organizationId), type: 'settlement_paid', title: `Settlement ${s.settlementNumber} paid`, body: `${await moneyText(tx, s.netMinor)} sent by ${method} (${reference}).`, link: '/client' })
     await audit(tx, { actorId: context.session!.itemId, action: 'settlement.paid', entityType: 'Settlement', entityId: s.id, after: { method, reference, netMinor: s.netMinor } })
     return updated
   })

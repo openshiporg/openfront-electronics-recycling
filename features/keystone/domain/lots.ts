@@ -3,7 +3,7 @@ import { awardOverrideProblem, bidEligibilityProblem, minimumOpenBid, perLineTot
 import { awardInvoiceLines } from '../lib/rules/money'
 import { sanitizationAllowsSale } from '../lib/rules/lifecycle'
 import { addBusinessDays } from '../lib/rules/time'
-import { afterCommit, companyUsers, getSettings, notify, staffWith } from '../lib/services'
+import { afterCommit, companyUsers, getSettings, moneyText, notify, staffWith } from '../lib/services'
 import { refreshLotHigh } from './buyers'
 import { hasPermission } from '../access'
 import { createInvoice } from './money'
@@ -337,9 +337,9 @@ export async function placeBidCore(context: Ctx, input: BidArgs & { companyId: s
       }
       if (lot.format === 'open_auction') {
         const min = minimumOpenBid(lot)
-        if (amount < min) fail(`Your bid must be at least ${(min / 100).toFixed(2)}.`)
+        if (amount < min) fail(`Your bid must be at least ${await moneyText(tx, min)}.`)
       } else if (lot.openingBidMinor && amount < lot.openingBidMinor) {
-        fail(`The minimum bid is ${(lot.openingBidMinor / 100).toFixed(2)}.`)
+        fail(`The minimum bid is ${await moneyText(tx, lot.openingBidMinor)}.`)
       }
       const { settings } = await assertMayBid(tx, { companyId: input.companyId, userId: input.userId, lotId: lot.id, amountMinor: amount, skipTerms: input.skipTerms })
 
@@ -376,7 +376,7 @@ export async function placeBidCore(context: Ctx, input: BidArgs & { companyId: s
           await tx.lot.update({ where: { id: lot.id }, data: { closesAt: extended, extensionCount: (lot.extensionCount ?? 0) + 1 } })
         }
         if (leaderBefore && leaderBefore.companyId !== input.companyId) {
-          await notify(tx, { userIds: await companyUsers(tx, leaderBefore.companyId), type: 'outbid', title: `You have been outbid on ${lot.lotNumber}`, body: `${lot.title}: the high bid is now ${(amount / 100).toFixed(2)}.`, link: `/lots/${lot.lotNumber}` })
+          await notify(tx, { userIds: await companyUsers(tx, leaderBefore.companyId), type: 'outbid', title: `You have been outbid on ${lot.lotNumber}`, body: `${lot.title}: the high bid is now ${await moneyText(tx, amount)}.`, link: `/lots/${lot.lotNumber}` })
         }
       }
       await audit(tx, { actorId: input.userId, action: input.source === 'staff_entry' ? 'bid.entered_by_staff' : 'bid.placed', entityType: 'Lot', entityId: lot.id, after: { bidId: bid.id, companyId: input.companyId, source: input.source, ...(lot.format === 'sealed_bid' ? {} : { amountMinor: amount }) }, ipAddress: clientIp(context) })
@@ -525,7 +525,7 @@ async function createAwardRecords(tx: Tx, input: { lot: any; bid: any; lines: Ar
     for (let i = 0; i < own.length; i++) await tx.asset.update({ where: { id: own[i].id }, data: { soldPriceMinor: i === own.length - 1 ? l.totalMinor - each * (own.length - 1) : each } })
   }
   for (const a of assets) await tx.custodyEvent.create({ data: { assetId: a.id, type: 'allocated', actorId: input.actorId, actorName: input.actorId ? '' : 'System', occurredAt: now, notes: `Sold on ${input.lot.lotNumber}, order ${orderNumber}` } })
-  await notify(tx, { userIds: await companyUsers(tx, company.id), type: 'lot_won', title: `You won ${input.lot.lotNumber}`, body: `${input.lot.title}: invoice ${invoiceNumber} for ${(invoice.totalMinor / 100).toFixed(2)} is due ${dueAt.toDateString()}.`, link: `/buyer/invoices/${invoiceNumber}` })
+  await notify(tx, { userIds: await companyUsers(tx, company.id), type: 'lot_won', title: `You won ${input.lot.lotNumber}`, body: `${input.lot.title}: invoice ${invoiceNumber} for ${await moneyText(tx, invoice.totalMinor)} is due ${dueAt.toDateString()}.`, link: `/buyer/invoices/${invoiceNumber}` })
   await audit(tx, { actorId: input.actorId, action: 'lot.awarded', entityType: 'Lot', entityId: input.lot.id, after: { awardId: award.id, companyId: company.id, amountMinor: total, orderNumber, invoiceNumber, isBelowReserve: input.isBelowReserve }, reason: input.reason })
   return { awardId: award.id, orderId: order.id, orderNumber, invoiceNumber }
 }

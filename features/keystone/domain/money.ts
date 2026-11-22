@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { audit, dbNow, fail, inTransaction, lockRow, nextNumber, str, type Ctx, type Tx } from '../lib/core'
 import { cardFee, invoiceStatusFor, invoiceTotals, refundProblem } from '../lib/rules/money'
 import { addBusinessDays } from '../lib/rules/time'
-import { afterCommit, companyUsers, getSettings, notify, organizationUsers, staffWith } from '../lib/services'
+import { afterCommit, companyUsers, getSettings, moneyText, notify, organizationUsers, staffWith } from '../lib/services'
 import * as stripe from '../../integrations/payment/stripe'
 
 // Invoices, card sessions, bank transfers and refunds (§3.4). Adapted from the
@@ -356,7 +356,7 @@ export async function reportBankTransfer(context: Ctx, args: { invoiceNumber: st
     const current = await tx.invoice.findUnique({ where: { id: invoice.id } })
     if (!['open', 'partially_paid'].includes(current.status)) fail('This invoice is not open for payment.')
     const created = await tx.payment.create({ data: { invoiceId: invoice.id, method: 'wire', amountMinor: amount, status: 'reported', bankReference: reference, paidOn: str(args.date, 10), reportedById: user.id, reportedAt: new Date() } })
-    await notify(tx, { userIds: await staffWith(tx, 'canManagePayments'), type: 'transfer_reported', title: `Transfer reported on ${current.invoiceNumber}`, body: `${user.email} reported a transfer of ${(amount / 100).toFixed(2)} with reference ${reference}. Confirm it against the bank statement.`, link: '/dashboard/platform/payments' })
+    await notify(tx, { userIds: await staffWith(tx, 'canManagePayments'), type: 'transfer_reported', title: `Transfer reported on ${current.invoiceNumber}`, body: `${user.email} reported a transfer of ${await moneyText(tx, amount)} with reference ${reference}. Confirm it against the bank statement.`, link: '/dashboard/platform/payments' })
     await audit(tx, { actorId: user.id, action: 'payment.reported', entityType: 'Invoice', entityId: invoice.id, after: { amountMinor: amount, reference } })
     return created
   })

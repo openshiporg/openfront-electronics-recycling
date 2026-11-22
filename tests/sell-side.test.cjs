@@ -41,9 +41,9 @@ test('open auction: increment enforced, outbid notice, soft close extends', { sk
   const lot = await f.lot(ctx.prisma, { format: 'open_auction', openingBidMinor: 100000, bidIncrementMinor: 5000, closesAt: new Date(Date.now() + 30_000) })
   const a = await f.buyer(ctx.prisma)
   const b = await f.buyer(ctx.prisma)
-  await assert.rejects(bidAs(a.user, { lotNumber: lot.lotNumber, amountMinor: 99000 }), /at least 1000\.00/)
+  await assert.rejects(bidAs(a.user, { lotNumber: lot.lotNumber, amountMinor: 99000 }), /at least \$1,000\.00\./)
   await bidAs(a.user, { lotNumber: lot.lotNumber, amountMinor: 100000 })
-  await assert.rejects(bidAs(b.user, { lotNumber: lot.lotNumber, amountMinor: 104000 }), /at least 1050\.00/)
+  await assert.rejects(bidAs(b.user, { lotNumber: lot.lotNumber, amountMinor: 104000 }), /at least \$1,050\.00\./)
   const second = await bidAs(b.user, { lotNumber: lot.lotNumber, amountMinor: 105000 })
   const after = await ctx.prisma.lot.findUnique({ where: { id: lot.id } })
   assert.equal(after.currentAmountMinor, 105000)
@@ -57,8 +57,9 @@ test('open auction: increment enforced, outbid notice, soft close extends', { sk
     assert.equal((await ctx.prisma.lot.findUnique({ where: { id: lot.id } })).extensionCount, 2)
     assert.ok(new Date(third.closesAt).getTime() > Date.now() + s.softCloseExtensionMinutes * 60_000 - 5_000)
   }
-  const outbid = await ctx.prisma.notification.count({ where: { userId: a.user.id, type: 'outbid' } })
-  assert.equal(outbid, 1)
+  const outbid = await ctx.prisma.notification.findMany({ where: { userId: a.user.id, type: 'outbid' } })
+  assert.equal(outbid.length, 1)
+  assert.match(outbid[0].body, /the high bid is now \$1,050\.00\./, 'money in notices uses the store currency and separators')
 })
 
 test('late bid is refused once the close has passed, even before the clock runs', { skip }, async () => {
@@ -127,7 +128,7 @@ test('race: two buyers bid on one open lot at the same moment; the lock orders t
   const refused = results.filter((r) => r.status === 'rejected')
   assert.equal(ok.length, 1, 'exactly one opening bid is accepted')
   assert.equal(refused.length, 1)
-  assert.match(refused[0].reason.message, /at least 1010\.00/)
+  assert.match(refused[0].reason.message, /at least \$1,010\.00/)
   const after = await ctx.prisma.lot.findUnique({ where: { id: lot.id } })
   assert.equal(after.bidCount, 1)
   assert.equal(after.currentAmountMinor, 100000)
@@ -140,7 +141,7 @@ test('race: two buyers bid on one open lot at the same moment; the lock orders t
     lots.placeBid(cb, { lotNumber: lot.lotNumber, amountMinor: 160000, idempotencyKey: f.key() }),
   ])
   assert.equal(round2[1].status, 'fulfilled')
-  if (round2[0].status === 'rejected') assert.match(round2[0].reason.message, /at least 1610\.00/)
+  if (round2[0].status === 'rejected') assert.match(round2[0].reason.message, /at least \$1,610\.00/)
   const final = await ctx.prisma.lot.findUnique({ where: { id: lot.id } })
   assert.equal(final.currentAmountMinor, 160000)
   const active = await ctx.prisma.bid.findMany({ where: { lotId: lot.id, status: 'active' } })

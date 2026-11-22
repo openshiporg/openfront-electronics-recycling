@@ -1,7 +1,7 @@
 import { audit, dbNow, fail, inTransaction, lockRow, nextNumber, requireBuyer, str, type Ctx, type Tx } from '../lib/core'
-import { restockingFee, strikeOutcome, formatMinor } from '../lib/rules/money'
+import { restockingFee, strikeOutcome } from '../lib/rules/money'
 import { addBusinessDays, dockSlots, zonedInstant } from '../lib/rules/time'
-import { afterCommit, companyUsers, getSettings, notify, staffWith, storeUpload, type FileInput } from '../lib/services'
+import { afterCommit, companyUsers, getSettings, moneyText, notify, staffWith, storeUpload, type FileInput } from '../lib/services'
 import { suspendCompany } from './buyers'
 import { maybeCompleteLot } from './lots'
 import { createInvoice, refundPayment } from './money'
@@ -371,7 +371,7 @@ export async function resolveClaim(context: Ctx, args: { claimId: string; action
         for (const id of ids) await tx.custodyEvent.create({ data: { assetId: id, type: 'received', actorId: context.session!.itemId, occurredAt: new Date(), notes: `Returned on claim ${claim.claimNumber}` } })
       }
       const updated = await tx.claim.update({ where: { id: claim.id }, data: { status: 'resolved', resolvedAt: new Date() } })
-      await notify(tx, { userIds: await companyUsers(tx, claim.companyId), type: 'claim_approved', title: `Claim ${claim.claimNumber} approved`, body: `We approved ${formatMinor(amount)} on your claim${refund?.status === 'succeeded' ? ' and sent the refund' : ''}.`, link: `/buyer/orders/${claim.order.orderNumber}` })
+      await notify(tx, { userIds: await companyUsers(tx, claim.companyId), type: 'claim_approved', title: `Claim ${claim.claimNumber} approved`, body: `We approved ${await moneyText(tx, amount)} on your claim${refund?.status === 'succeeded' ? ' and sent the refund' : ''}.`, link: `/buyer/orders/${claim.order.orderNumber}` })
       await audit(tx, { actorId: context.session!.itemId, action: 'claim.approved', entityType: 'Claim', entityId: claim.id, after: { resolution, amountMinor: amount, refundId: refund?.id } })
       return updated
     })

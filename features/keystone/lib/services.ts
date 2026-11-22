@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { createTransport } from 'nodemailer'
 import { fail, type Ctx, type Tx } from './core'
+import { formatMinor } from './rules/money'
 
 // ---------------------------------------------------------------- settings
 
@@ -16,6 +17,12 @@ export async function getSettings(db: Tx): Promise<Settings> {
   if (existing) return existing
   // Singleton row id 1; upsert so two first requests at once do not collide.
   return db.storeSettings.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} })
+}
+
+/** Money for people to read, in the store currency: "$17,300.00". Every message and notice uses this. */
+export async function moneyText(db: Tx, minor: number | null | undefined) {
+  const settings = await getSettings(db)
+  return formatMinor(minor, settings.currencyCode || 'USD')
 }
 
 // ---------------------------------------------------------------- files
@@ -103,16 +110,14 @@ export type NotifyInput = { userIds: string[]; type: string; title: string; body
 export async function notify(tx: Tx, input: NotifyInput) {
   const settings = await getSettings(tx)
   const configured = Boolean(smtpConfig(settings))
-  for (const userId of [...new Set(input.userIds.filter(Boolean))]) {
-    const dedupeKey = input.dedupeKey ? `${input.dedupeKey}:${userId}` : null
-    if (dedupeKey) {
-      const exists = await tx.notification.findUnique({ where: { dedupeKey }, select: { id: true } })
-      if (exists) continue
-    }
-    await tx.notification.create({
-      data: { userId, type: input.type, title: input.title, body: input.body, link: input.link ?? '', dedupeKey, emailStatus: configured ? 'queued' : 'skipped' },
-    })
-  }
+  const userIds = [...new Set(input.userIds.filter(Boolean))]
+  if (!userIds.length) return
+  // One insert for every recipient: a notice to all staff must not cost a round trip each inside a lock.
+  // dedupeKey is unique, so a repeat of the same notice is skipped per user.
+  await tx.notification.createMany({
+    data: userIds.map((userId) => ({ userId, type: input.type, title: input.title, body: input.body, link: input.link ?? '', dedupeKey: input.dedupeKey ? `${input.dedupeKey}:${userId}` : null, emailStatus: configured ? 'queued' : 'skipped' })),
+    skipDuplicates: true,
+  })
 }
 
 export async function staffWith(tx: Tx, permission: string) {
