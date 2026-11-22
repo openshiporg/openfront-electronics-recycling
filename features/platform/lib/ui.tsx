@@ -164,10 +164,13 @@ export const tableWrapClass = 'relative min-w-0 overflow-x-auto rounded-[6px] bo
 export const thClass = 'h-9 whitespace-nowrap border-b bg-muted/40 px-3 text-left align-middle text-xs font-medium text-muted-foreground';
 export const tdClass = 'border-b px-3 py-2.5 align-top [tr:last-child>&]:border-b-0';
 
-export function DataTable({ label, head, children, className }: { label: string; head: Array<{ label: ReactNode; className?: string }>; children: ReactNode; className?: string }) {
+/** Phone layout for a table: header hidden, each row a block with its cells flowing and wrapping. */
+const stackClass = 'max-sm:[&_thead]:hidden max-sm:[&_tbody>tr]:flex max-sm:[&_tbody>tr]:flex-wrap max-sm:[&_tbody>tr]:items-start max-sm:[&_tbody>tr]:gap-x-3 max-sm:[&_tbody>tr]:gap-y-1 max-sm:[&_tbody>tr]:border-b max-sm:[&_tbody>tr]:px-3 max-sm:[&_tbody>tr]:py-2.5 max-sm:[&_tbody>tr:last-child]:border-b-0 max-sm:[&_td]:border-0 max-sm:[&_td]:p-0 max-sm:[&_td]:text-left max-sm:[&_td:first-child]:basis-full'
+
+export function DataTable({ label, head, children, className, stack }: { label: string; head: Array<{ label: ReactNode; className?: string }>; children: ReactNode; className?: string; stack?: boolean }) {
   return (
     <div className={cn(tableWrapClass, className)}>
-      <table className="w-full border-collapse text-sm" aria-label={label}>
+      <table className={cn('w-full border-collapse text-sm', stack && stackClass)} aria-label={label}>
         <thead><tr>{head.map((column, index) => <th key={index} scope="col" className={cn(thClass, column.className)}>{column.label}</th>)}</tr></thead>
         <tbody>{children}</tbody>
       </table>

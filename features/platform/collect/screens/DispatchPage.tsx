@@ -15,7 +15,7 @@ export default async function DispatchPage({ searchParams }: { searchParams: Pro
     <PlatformPage route="/platform/dispatch" title="Dispatch" meta="Accepted jobs waiting for a date, and the runs booked for the next seven days.">
       {async (staff) => {
         const r = await listQuery<any>(`query D($from: CalendarDay!, $to: CalendarDay!) {
-          waiting: jobs(where: { status: { equals: accepted } }, orderBy: [{ quoteAcceptedAt: asc }], take: 100) { id jobNumber requestedDates contactName organization { name } site { city hasDock needsLiftgate } siteAddress estimateLines { quantity unit notes } }
+          waiting: jobs(where: { status: { equals: accepted } }, orderBy: [{ quoteAcceptedAt: asc }], take: 100) { id jobNumber requestedDates contactName organization { name } site { city hasDock needsLiftgate } siteAddress estimateLines { quantity unit notes category { name } } }
           booked: jobs(where: { AND: [{ status: { in: [scheduled, en_route] } }, { scheduledDate: { gte: $from, lt: $to } }] }, orderBy: [{ scheduledDate: asc }, { windowStart: asc }], take: 200) { id jobNumber status scheduledDate windowStart windowEnd vehicle driver { id name } organization { name } site { city } siteAddress }
           users(where: { AND: [{ kind: { equals: staff } }, { isActive: { equals: true } }, { role: { canCollect: { equals: true } } }] }, orderBy: [{ name: asc }]) { id name }
         }`, { from, to })
@@ -38,12 +38,12 @@ export default async function DispatchPage({ searchParams }: { searchParams: Pro
             {!drivers.length ? <Notice>No active team member has a role that can collect. Give a role “Collect” under Team.</Notice> : null}
             <Section title="Waiting for a date" count={r.data.waiting.length}>
               {r.data.waiting.length ? (
-                <DataTable label="Accepted jobs" head={[{ label: 'Job' }, { label: 'Where' }, { label: 'Client wants' }, { label: 'Load' }, { label: '' }]}>
+                <DataTable stack label="Accepted jobs" head={[{ label: 'Job' }, { label: 'Where' }, { label: 'Client wants' }, { label: 'Load' }, { label: '' }]}>
                   {r.data.waiting.map((j: any) => <tr key={j.id}>
                     <Td><RowLink href={`/dashboard/platform/jobs/${j.id}`}>{j.jobNumber}</RowLink><div className="text-xs text-muted-foreground">{j.organization?.name}</div></Td>
                     <Td>{city(j)}{j.site?.hasDock ? ' · dock' : ''}{j.site?.needsLiftgate ? ' · liftgate' : ''}</Td>
                     <Td>{Array.isArray(j.requestedDates) && j.requestedDates.length ? j.requestedDates.map((d: string) => day(d)).join(', ') : '—'}</Td>
-                    <Td className="text-xs">{j.estimateLines.map((e: any) => `${e.quantity} ${e.unit} ${e.notes ?? ''}`).join('; ')}</Td>
+                    <Td className="text-xs">{j.estimateLines.map((e: any) => [e.quantity, e.unit === 'units' ? '' : e.unit, e.category?.name ?? '', e.notes ?? ''].filter(Boolean).join(' ')).join('; ') || '—'}</Td>
                     <Td className="text-right">{dispatch ? <OpDrawer op="scheduleJob" fixed={{ jobId: j.id }} title={`Schedule ${j.jobNumber}`} trigger="Schedule" triggerVariant="primary" fields={scheduleFields(j)} submitLabel="Schedule" /> : null}</Td>
                   </tr>)}
                 </DataTable>
@@ -53,7 +53,7 @@ export default async function DispatchPage({ searchParams }: { searchParams: Pro
               {byDay.size ? [...byDay.entries()].map(([d, jobs]) => (
                 <div key={d} className="mb-4">
                   <h3 className="mb-1 text-sm font-medium">{day(d)}</h3>
-                  <DataTable label={`Runs on ${d}`} head={[{ label: 'Window' }, { label: 'Job' }, { label: 'Where' }, { label: 'Driver' }, { label: 'Status' }, { label: '' }]}>
+                  <DataTable stack label={`Runs on ${d}`} head={[{ label: 'Window' }, { label: 'Job' }, { label: 'Where' }, { label: 'Driver' }, { label: 'Status' }, { label: '' }]}>
                     {jobs.map((j: any) => <tr key={j.id}>
                       <Td className="tabular-nums">{j.windowStart}–{j.windowEnd}</Td>
                       <Td><RowLink href={`/dashboard/platform/jobs/${j.id}`}>{j.jobNumber}</RowLink><div className="text-xs text-muted-foreground">{j.organization?.name}</div></Td>

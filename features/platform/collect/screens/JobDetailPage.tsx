@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation'
-import { PlatformPage, can, day, label, usd, when } from '../../lib/page'
+import { PlatformPage, can, day, label, term, usd, when } from '../../lib/page'
 import { DeleteButton, ItemDrawer, OpButton, OpDrawer } from '../../lib/forms'
 import { listQuery } from '../../lib/platformRequest'
 import { DataTable, Empty, Notice, Readouts, Section, Track, Td } from '../../lib/ui'
@@ -11,7 +11,7 @@ const JOB = `query J($id: ID!) {
     pricingModel revenueShareBps buyoutAmountMinor quoteSentAt quoteAcceptedAt quoteSignatureName declineReason cancelReason
     scheduledDate windowStart windowEnd vehicle collectedAt clientSignerName receivedAt completedAt internalNotes totalWeight assetCount dataBearingCount sanitizedCount
     organization { id name } site { id name addressLine1 city region postalCode hasDock needsLiftgate accessNotes } facility { id name } driver { id name } requestedBy { name }
-    estimateLines { id category { name } quantity unit notes }
+    estimateLines { id category { id name dataBearingDefault } quantity unit notes }
     serviceLines { id description quantity unitPriceMinor totalMinor kind }
     photos { id caption stage image { id filename } }
     containers(orderBy: [{ label: asc }]) { id label type sealNumber receivedSealNumber sealVerified sealException sealExceptionResolution itemCountDeclared grossWeight tareWeight netWeight status locationCode assetsCount }
@@ -22,8 +22,25 @@ const JOB = `query J($id: ID!) {
     invoices { id invoiceNumber kind status totalMinor balanceMinor }
   }
   materialCategories(orderBy: [{ name: asc }], take: 200) { id name }
+  acceptedItems(where: { accepted: { equals: true } }, orderBy: [{ sortOrder: asc }], take: 200) { id name feeType feeMinor category { id } }
   users(where: { AND: [{ kind: { equals: staff } }, { isActive: { equals: true } }, { role: { canCollect: { equals: true } } }] }, orderBy: [{ name: asc }]) { id name }
 }`
+
+/** A first quote from what the client asked for: catalog fees per unit, a wipe line for data-bearing units, and the pickup. */
+function draftQuote(j: any, items: any[]) {
+  const lines: string[] = []
+  const services: string[] = j.servicesRequested ?? []
+  if (j.type === 'pickup' || services.includes('pickup')) lines.push('Pickup | 1 | 0.00 | pickup')
+  let dataUnits = 0
+  for (const e of j.estimateLines ?? []) {
+    if (e.unit !== 'units') continue
+    if (e.category?.dataBearingDefault) dataUnits += e.quantity
+    const item = items.find((i) => i.category?.id === e.category?.id && i.feeType === 'per_item' && i.feeMinor > 0)
+    if (item) lines.push(`${item.name} recycling fee | ${e.quantity} | ${(item.feeMinor / 100).toFixed(2)} | recycling_fee`)
+  }
+  if (dataUnits || services.includes('data_destruction')) lines.push(`Data destruction per device | ${dataUnits || 1} | 0.00 | wipe`)
+  return lines.join('\n')
+}
 
 const LINE_COLUMNS = [{ key: 'description' }, { key: 'quantity', type: 'number' as const }, { key: 'unitPriceMinor', type: 'money' as const }, { key: 'kind' }]
 
@@ -49,12 +66,14 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           { name: 'notes', label: 'Notes', defaultValue: c?.notes },
         ]
         const address = j.site ? [j.site.addressLine1, j.site.city, j.site.region, j.site.postalCode].filter(Boolean).join(', ') : j.siteAddress ? [j.siteAddress.addressLine1, j.siteAddress.city, j.siteAddress.region, j.siteAddress.postalCode].filter(Boolean).join(', ') : ''
-        const quoteDefaults = j.serviceLines.length ? j.serviceLines.map((l: any) => [l.description, l.quantity, (l.unitPriceMinor / 100).toFixed(2), l.kind].join(' | ')).join('\n') : 'Pickup | 1 | 150.00 | pickup\nData destruction per drive | 1 | 8.00 | wipe'
+        const quoteDefaults = j.serviceLines.length
+          ? j.serviceLines.map((l: any) => [l.description, Number(l.quantity), (l.unitPriceMinor / 100).toFixed(2), l.kind].join(' | ')).join('\n')
+          : draftQuote(j, r.data.acceptedItems ?? [])
         const quoteFields = [
           { name: 'pricingModel', label: 'Pricing', type: 'select' as const, required: true, options: [{ value: 'fee_for_service', label: 'Fee for service' }, { value: 'revenue_share', label: 'Revenue share' }, { value: 'buyout', label: 'Buyout (we pay the client)' }], defaultValue: j.pricingModel || 'fee_for_service' },
           { name: 'revenueShareBps', label: 'Client share of resale (%)', type: 'percent' as const, defaultValue: j.revenueShareBps ?? undefined, hint: 'Revenue share only.' },
           { name: 'buyoutAmountMinor', label: 'Buyout amount', type: 'money' as const, defaultValue: j.buyoutAmountMinor ?? undefined, hint: 'Buyout only.' },
-          { name: 'lines', label: 'Service lines (description | qty | unit price | kind)', type: 'lines' as const, columns: LINE_COLUMNS, defaultValue: quoteDefaults, hint: 'Kinds: pickup, audit, wipe, shred, recycling_fee, other', wide: true },
+          { name: 'lines', label: 'Service lines (description | qty | unit price | kind)', type: 'lines' as const, columns: LINE_COLUMNS, defaultValue: quoteDefaults, hint: 'Drafted from the request and your catalog fees. Fill in any 0.00 price before sending. Kinds: pickup, audit, wipe, shred, recycling_fee, other', wide: true },
           { name: 'send', label: 'Send the quote to the client now', type: 'checkbox' as const, defaultValue: true },
         ]
         return (
@@ -102,10 +121,10 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
             <Section title="Quote" actions={j.quoteSentAt ? <span className="text-xs text-muted-foreground">Sent {when(j.quoteSentAt)}{j.quoteAcceptedAt ? ` · accepted ${when(j.quoteAcceptedAt)} by ${j.quoteSignatureName}` : ''}</span> : null}>
               {j.serviceLines.length ? (
                 <DataTable label="Service lines" head={[{ label: 'Service' }, { label: 'Qty', className: 'text-right' }, { label: 'Unit', className: 'text-right' }, { label: 'Total', className: 'text-right' }]}>
-                  {j.serviceLines.map((l: any) => <tr key={l.id}><Td>{l.description} <span className="text-xs text-muted-foreground">{label(l.kind)}</span></Td><Td className="text-right tabular-nums">{l.quantity}</Td><Td className="text-right tabular-nums">{usd(l.unitPriceMinor)}</Td><Td className="text-right tabular-nums">{usd(l.totalMinor)}</Td></tr>)}
+                  {j.serviceLines.map((l: any) => <tr key={l.id}><Td>{l.description}</Td><Td className="text-right tabular-nums">{Number(l.quantity)}</Td><Td className="text-right tabular-nums">{usd(l.unitPriceMinor)}</Td><Td className="text-right tabular-nums">{usd(l.totalMinor)}</Td></tr>)}
                 </DataTable>
               ) : <Empty>Not quoted yet.</Empty>}
-              {j.pricingModel ? <p className="mt-2 text-sm">{label(j.pricingModel)}{j.revenueShareBps ? ` · client gets ${j.revenueShareBps / 100}% of resale` : ''}{j.buyoutAmountMinor ? ` · buyout ${usd(j.buyoutAmountMinor)}` : ''}</p> : null}
+              {j.pricingModel ? <p className="mt-2 text-sm">{term(j.pricingModel)}{j.revenueShareBps ? ` · client gets ${j.revenueShareBps / 100}% of resale` : ''}{j.buyoutAmountMinor ? ` · buyout ${usd(j.buyoutAmountMinor)}` : ''}</p> : null}
             </Section>
             <Section title="Containers" count={j.containers.length}>
               {j.containers.length ? (

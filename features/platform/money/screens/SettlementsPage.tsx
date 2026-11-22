@@ -56,7 +56,7 @@ export default async function SettlementsPage({ searchParams }: { searchParams: 
                       {s.lines.map((l: any) => (
                         <tr key={l.id}>
                           <td className="px-3 py-2 text-sm">{l.description}{l.asset ? <div className="text-xs text-muted-foreground">{l.asset.assetNumber} {l.asset.serialNumber}</div> : null}</td>
-                          <Td>{term(l.kind)}</Td><Td className="text-right tabular-nums">{l.quantity}</Td><Td className="text-right tabular-nums">{usd(l.grossMinor)}</Td>
+                          <Td>{term(l.kind)}</Td><Td className="text-right tabular-nums">{Number(l.quantity)}</Td><Td className="text-right tabular-nums">{usd(l.grossMinor)}</Td>
                           <Td className="text-right tabular-nums">{l.kind === 'service_fee' ? '—' : `${(l.clientShareBps ?? 0) / 100}%`}</Td><Td className="text-right tabular-nums">{usd(l.clientAmountMinor)}</Td>
                           <Td className="text-right">{manage && editable && l.kind === 'adjustment' ? <OpButton op="removeSettlementLine" input={{ lineId: l.id }} label="Remove" variant="danger" confirm="Remove this adjustment?" /> : null}</Td>
                         </tr>
