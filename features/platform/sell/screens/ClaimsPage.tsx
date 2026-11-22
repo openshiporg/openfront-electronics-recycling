@@ -46,11 +46,13 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
                 <Facts items={[
                   ['Buyer', c.company?.legalName], ['Order', <RowLink key="o" href={`/dashboard/platform/orders/${c.order.id}`}>{c.order.orderNumber}</RowLink>], ['Reason', term(c.reason)],
                   ['Asked for', usd(c.requestedAmountMinor)], ['Recorded', `${when(c.createdAt)}${c.openedBy ? ` by ${c.openedBy.name}` : ''}`], ['Claim window', day(c.order.claimWindowEndsAt)],
-                  ['Resolution', term(c.resolution)], ['Approved', usd(c.approvedAmountMinor)], ['Decided', c.resolvedAt ? `${when(c.resolvedAt)} by ${c.resolvedBy?.name ?? ''}` : ''],
-                  ['Refund', c.refund ? `${usd(c.refund.amountMinor)} · ${label(c.refund.status)}` : ''],
+                  ...(c.resolvedAt ? [
+                    ['Resolution', term(c.resolution)], ['Approved', usd(c.approvedAmountMinor)], ['Decided', `${when(c.resolvedAt)} by ${c.resolvedBy?.name ?? ''}`],
+                    ['Refund', c.refund ? `${usd(c.refund.amountMinor)} · ${c.refund.status === 'succeeded' ? 'Refunded' : term(c.refund.status)}` : ''],
+                  ] as Array<[string, any]> : []),
                 ]} />
                 <p className="mt-3 whitespace-pre-line text-sm">{c.description}</p>
-                {Array.isArray(c.lines) && c.lines.length ? <ul className="mt-2 list-disc pl-5 text-sm">{c.lines.map((l: any, i: number) => <li key={i}>Line {l.lineNumber}: {l.quantity} {l.note ? `· ${l.note}` : ''}</li>)}</ul> : null}
+                {Array.isArray(c.lines) && c.lines.length ? <ul className="mt-2 list-disc pl-5 text-sm">{c.lines.map((l: any, i: number) => <li key={i}>Line {l.lineNumber}, {l.quantity} unit{Number(l.quantity) === 1 ? '' : 's'}{l.note ? `: ${l.note}` : ''}</li>)}</ul> : null}
                 {c.resolutionNote ? <p className="mt-2 text-sm text-muted-foreground">{c.resolutionNote}</p> : null}
                 {c.photos.length ? <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">{c.photos.map((p: any) => <a key={p.id} href={`/api/files/${p.image?.id}`} target="_blank" rel="noreferrer"><img src={`/api/files/${p.image?.id}`} alt={p.caption || 'Claim photo'} className="aspect-[4/3] w-full rounded-[6px] border object-cover" /></a>)}</div> : null}
                 {manage ? (
@@ -69,7 +71,7 @@ export default async function ClaimsPage({ searchParams }: { searchParams: Promi
             ) : null}
             <TabbedTable label="Claims" path="/dashboard/platform/claims" params={{ status, order: orderId }} data={data} empty="No claims here." head={[{ label: 'Claim' }, { label: 'Buyer' }, { label: 'Reason' }, { label: 'Status' }, { label: 'Asked', className: 'text-right' }, { label: 'Approved', className: 'text-right' }, { label: 'Recorded' }]} row={(x) => (
               <tr key={x.id}>
-                <Td><RowLink href={`/dashboard/platform/claims?claim=${x.id}&status=${status}`}>{x.claimNumber}</RowLink><div className="text-xs text-muted-foreground">{x.order?.orderNumber}</div></Td>
+                <Td className="whitespace-nowrap"><RowLink href={`/dashboard/platform/claims?claim=${x.id}&status=${status}`}>{x.claimNumber}</RowLink><div className="text-xs text-muted-foreground">{x.order?.orderNumber}</div></Td>
                 <Td>{x.company?.legalName}</Td><Td>{term(x.reason)}</Td><Td><Status value={x.status} /></Td>
                 <Td className="text-right tabular-nums">{usd(x.requestedAmountMinor)}</Td><Td className="text-right tabular-nums">{usd(x.approvedAmountMinor)}</Td><Td>{day(x.createdAt)}</Td>
               </tr>

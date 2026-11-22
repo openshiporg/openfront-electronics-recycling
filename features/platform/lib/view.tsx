@@ -69,7 +69,7 @@ export function RowLink({ href, children }: { href: string; children: ReactNode 
 /** Definition list for detail pages. */
 export function Facts({ items }: { items: Array<[string, ReactNode]> }) {
   return (
-    <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
+    <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:gap-x-6 lg:grid-cols-3">
       {items.map(([k, v]) => (
         <div key={k} className="min-w-0">
           <dt className="text-xs text-muted-foreground">{k}</dt>

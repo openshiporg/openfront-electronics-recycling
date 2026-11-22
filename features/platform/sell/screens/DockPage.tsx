@@ -80,10 +80,15 @@ export default async function DockPage({ searchParams }: { searchParams: Promise
                 <ul className="grid gap-1 text-sm">{unbooked.map((o: any) => <li key={o.id}><RowLink href={`/dashboard/platform/orders/${o.id}`}>{o.orderNumber}</RowLink> · {o.company?.legalName}</li>)}</ul>
               </Section>
             ) : null}
-            <p className="text-xs text-muted-foreground">Times are {tz}. Slots are {d.facility.slotMinutes} minutes; {d.facility.perWindow} truck{d.facility.perWindow === 1 ? '' : 's'} per slot.</p>
+            <p className="text-xs text-muted-foreground">Times are {tzWords(tz)}. Slots are {d.facility.slotMinutes} minutes; {d.facility.perWindow} truck{d.facility.perWindow === 1 ? '' : 's'} per slot.</p>
           </>
         )
       }}
     </PlatformPage>
   )
+}
+
+/** "Eastern Standard Time" rather than "America/New_York". */
+function tzWords(tz: string) {
+  try { return new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'long' }).formatToParts(new Date()).find((p) => p.type === 'timeZoneName')?.value ?? tz } catch { return tz }
 }
