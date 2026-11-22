@@ -160,6 +160,21 @@ test('manifest header row is detected below title rows and mapped by name', () =
   assert.deepEqual(row.line.extra, { 'Warehouse bin': 'R4' }, 'unmapped columns are kept')
 })
 
+test('spec columns export with plain headers and import from both the plain headers and the old keys', () => {
+  assert.equal(sheets.specLabel('cpu'), 'Processor')
+  assert.equal(sheets.specLabel('ramGb'), 'RAM (GB)')
+  assert.equal(sheets.specLabel('storageGb'), 'Storage (GB)')
+  assert.equal(sheets.specLabel('batteryHealth'), 'Battery health')
+  assert.deepEqual(sheets.specKeysOf([{ specs: { batteryHealth: '90%', ramGb: 8 } }, { specs: { cpu: 'i5' } }]), ['cpu', 'ramGb', 'batteryHealth'])
+  for (const headers of [['Description', 'Qty', 'Processor', 'RAM (GB)', 'Storage (GB)', 'Storage type', 'Screen (in)'], ['description', 'quantity', 'cpu', 'ramGb', 'storageGb', 'storageType', 'screenIn']]) {
+    const mapping = sheets.proposeMapping(headers)
+    assert.deepEqual([mapping.cpu, mapping.ramGb, mapping.storageGb, mapping.storageType, mapping.screenIn], [2, 3, 4, 5, 6], headers.join(','))
+    const [row] = sheets.applyManifestMapping(headers, [['Dell Latitude 5420', 1, 'i5-1145G7', '16', '256', 'SSD', '14']], mapping, 2)
+    assert.deepEqual(row.line.specs, { cpu: 'i5-1145G7', ramGb: 16, storageGb: 256, storageType: 'SSD', screenIn: 14 })
+    assert.deepEqual(row.line.extra, {})
+  }
+})
+
 test('manifest rows with errors are marked with the reason; blank rows are skipped', () => {
   const headers = ['Description', 'Qty']
   const out = sheets.applyManifestMapping(headers, [['Dell OptiPlex 7090', 'two'], ['', ''], ['', '3'], ['HP EliteDesk 800', '0']], { description: 0, quantity: 1 }, 2)

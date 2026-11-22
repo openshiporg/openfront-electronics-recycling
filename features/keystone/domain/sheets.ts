@@ -1,5 +1,5 @@
 import { audit, fail, inTransaction, lockRow, nextNumber, requireBuyer, str, type Ctx } from '../lib/core'
-import { applyManifestMapping, detectHeaderRow, MANIFEST_FIELDS, parseMoneyCell, proposeMapping, STORED_ROW_CAP } from '../lib/rules/sheets'
+import { applyManifestMapping, detectHeaderRow, MANIFEST_FIELDS, parseMoneyCell, proposeMapping, specKeysOf, specLabel, STORED_ROW_CAP } from '../lib/rules/sheets'
 import { asDownload, decodeUpload, getSettings, readFileBytes, storeFile, type FileInput } from '../lib/services'
 import * as XLSX from 'xlsx'
 import { readWorkbook, writeWorkbook, XLSX_MIME } from '../lib/spreadsheet'
@@ -144,9 +144,9 @@ export async function importAssets(context: Ctx, args: { file: FileInput; jobId:
 // ---------------------------------------------------------------- downloads
 
 function manifestRows(lines: any[]) {
-  const specKeys = [...new Set(lines.flatMap((l) => Object.keys(l.specs ?? {})))]
+  const specKeys = specKeysOf(lines)
   const extraKeys = [...new Set(lines.flatMap((l) => Object.keys(l.extra ?? {})))]
-  const header = ['Line', 'Category', 'Manufacturer', 'Model', 'Part number', 'Description', ...specKeys, 'Cosmetic grade', 'Functional grade', 'Quantity', 'Unit', 'Serials', 'Notes', ...extraKeys]
+  const header = ['Line', 'Category', 'Manufacturer', 'Model', 'Part number', 'Description', ...specKeys.map(specLabel), 'Cosmetic grade', 'Functional grade', 'Quantity', 'Unit', 'Serials', 'Notes', ...extraKeys]
   const rows = lines.map((l) => [l.lineNumber, l.category?.name ?? '', l.manufacturer, l.model, l.partNumber, l.description, ...specKeys.map((k) => l.specs?.[k] ?? ''), l.cosmeticGrade, l.functionalGrade, l.quantity, l.unit, (Array.isArray(l.serials) ? l.serials : []).join(', '), l.notes, ...extraKeys.map((k) => l.extra?.[k] ?? '')])
   return { header, rows }
 }
@@ -176,19 +176,23 @@ export async function staffLotManifest(context: Ctx, args: { lotId: string }) {
 }
 
 /** The bid sheet: the manifest with a Unit price column. Line ids are in a hidden-in-plain-sight first column. */
-function bidSheetRows(lot: any) {
-  const header = ['Line ID (do not edit)', 'Line', 'Manufacturer', 'Model', 'Description', 'Grade', 'Quantity', 'Unit price (USD)', 'Line total']
-  const rows = lot.lines.map((l: any, i: number) => [l.id, l.lineNumber, l.manufacturer, l.model, l.description, [l.cosmeticGrade, l.functionalGrade].filter(Boolean).join(' / '), l.quantity, '', { f: `G${i + 4}*H${i + 4}` }])
-  return [[`${lot.lotNumber}: ${lot.title}. Enter a unit price per line you want; leave the others empty.`], [], header, ...rows]
+function bidSheetRows(lot: any, currency: string) {
+  const specKeys = specKeysOf(lot.lines)
+  const header = ['Line ID (do not edit)', 'Line', 'Manufacturer', 'Model', 'Description', ...specKeys.map(specLabel), 'Grade', 'Quantity', `Unit price (${currency})`, 'Line total']
+  const qty = XLSX.utils.encode_col(5 + specKeys.length + 1)
+  const price = XLSX.utils.encode_col(5 + specKeys.length + 2)
+  const rows = lot.lines.map((l: any, i: number) => [l.id, l.lineNumber, l.manufacturer, l.model, l.description, ...specKeys.map((k) => l.specs?.[k] ?? ''), [l.cosmeticGrade, l.functionalGrade].filter(Boolean).join(' / '), l.quantity, '', { t: 'n', f: `${qty}${i + 4}*${price}${i + 4}` }])
+  return { rows: [[`${lot.lotNumber}: ${lot.title}. Enter a unit price per line you want; leave the others empty.`], [], header, ...rows], specCount: specKeys.length }
 }
 
 export async function downloadBidSheet(context: Ctx, args: { lotNumber: string }) {
   const { lot } = await lotForBuyerDownload(context, args.lotNumber)
   if (lot.bidBasis !== 'per_line') fail('This lot is bid as a whole; enter one amount.')
-  const rows = bidSheetRows(lot)
+  const settings = await getSettings(context.prisma)
+  const { rows, specCount } = bidSheetRows(lot, settings.currencyCode || 'USD')
   // Formulas in our own sheet are fine: the template is ours. Imported cells are never evaluated.
   const ws = XLSX.utils.aoa_to_sheet(rows)
-  ws['!cols'] = [{ wch: 28 }, { wch: 6 }, { wch: 14 }, { wch: 18 }, { wch: 40 }, { wch: 12 }, { wch: 9 }, { wch: 16 }, { wch: 12 }]
+  ws['!cols'] = [{ wch: 28 }, { wch: 6 }, { wch: 14 }, { wch: 18 }, { wch: 40 }, ...Array.from({ length: specCount }, () => ({ wch: 14 })), { wch: 12 }, { wch: 9 }, { wch: 16 }, { wch: 12 }]
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Bid sheet')
   return asDownload(`${lot.lotNumber}-bid-sheet.xlsx`, XLSX_MIME, Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })))

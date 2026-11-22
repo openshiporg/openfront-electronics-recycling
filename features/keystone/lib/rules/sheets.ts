@@ -14,11 +14,12 @@ export const MANIFEST_FIELDS: Record<string, string[]> = {
   partNumber: ['part number', 'part #', 'p/n', 'pn', 'sku', 'mpn'],
   description: ['description', 'desc', 'item', 'item description', 'product'],
   serial: ['serial', 'serial number', 'serial #', 's/n', 'sn', 'service tag'],
+  // Spec columns: our exports write the plain label ("RAM (GB)"); older files used the key ("ramGb"). Both import.
   cpu: ['cpu', 'processor', 'proc'],
-  ramGb: ['ram', 'memory', 'ram gb', 'memory gb'],
-  storageGb: ['storage', 'hdd', 'ssd', 'drive', 'storage gb', 'hdd size'],
-  storageType: ['storage type', 'drive type'],
-  screenIn: ['screen', 'screen size', 'display'],
+  ramGb: ['ram', 'memory', 'ram gb', 'memory gb', 'ram (gb)', 'ramgb'],
+  storageGb: ['storage', 'hdd', 'ssd', 'drive', 'storage gb', 'hdd size', 'storage (gb)', 'storagegb'],
+  storageType: ['storage type', 'drive type', 'storagetype'],
+  screenIn: ['screen', 'screen size', 'display', 'screen (in)', 'screenin'],
   cosmeticGrade: ['cosmetic', 'cosmetic grade', 'grade', 'condition'],
   functionalGrade: ['functional', 'functional grade', 'test result', 'tested', 'status'],
   quantity: ['qty', 'quantity', 'units', 'count', 'pcs'],
@@ -26,6 +27,22 @@ export const MANIFEST_FIELDS: Record<string, string[]> = {
   weight: ['weight', 'lbs', 'weight lb'],
   notes: ['notes', 'comments', 'remarks'],
   assetTag: ['asset tag', 'client tag', 'tag'],
+}
+
+/** Plain column names for the spec keys stored on lines and assets. */
+export const SPEC_LABELS: Record<string, string> = { cpu: 'Processor', ramGb: 'RAM (GB)', storageGb: 'Storage (GB)', storageType: 'Storage type', screenIn: 'Screen (in)' }
+
+/** "ramGb" -> "RAM (GB)"; an unknown key "batteryHealth" -> "Battery health". */
+export function specLabel(key: string) {
+  if (SPEC_LABELS[key]) return SPEC_LABELS[key]
+  const words = key.replace(/[_-]+/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').trim().toLowerCase()
+  return words ? words[0].toUpperCase() + words.slice(1) : key
+}
+
+/** The spec keys used across these lines, known keys first in a fixed order, then the rest as found. */
+export function specKeysOf(lines: Array<{ specs?: unknown }>) {
+  const found = new Set(lines.flatMap((l) => (l.specs && typeof l.specs === 'object' ? Object.keys(l.specs as object) : [])))
+  return [...Object.keys(SPEC_LABELS).filter((k) => found.has(k)), ...[...found].filter((k) => !(k in SPEC_LABELS))]
 }
 
 const normalize = (value: unknown) => String(value ?? '').trim().toLowerCase().replace(/[_\s]+/g, ' ')

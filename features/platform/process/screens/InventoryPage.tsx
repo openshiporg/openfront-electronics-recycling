@@ -2,6 +2,7 @@ import { PlatformPage, can, label, usd } from '../../lib/page'
 import { OpDrawer, SelectAll } from '../../lib/forms'
 import { listQuery } from '../../lib/platformRequest'
 import { Notice, Track } from '../../lib/ui'
+import { specLabel } from '@/features/keystone/lib/rules/sheets'
 import { param, readTabbedList, RowLink, TabbedTable, Td, type SearchParams } from '../../lib/view'
 
 /** R9 inventory ready for sale; S7 make a lot from ticked assets. Drafts let you take assets back out from the lot page. */
@@ -45,7 +46,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Pr
                 <Td><span className="font-mono text-xs">{a.assetNumber}</span><div>{a.serialNumber}</div></Td>
                 <Td>{[a.manufacturer, a.model].filter(Boolean).join(' ')}<div className="text-xs text-muted-foreground">{a.category?.name} · {label(a.disposition)}</div></Td>
                 <Td>{[a.cosmeticGrade?.code, a.functionalGrade?.code].filter(Boolean).join(' / ') || '—'}</Td>
-                <Td className="max-w-[16rem] text-xs">{a.specs && typeof a.specs === 'object' ? Object.entries(a.specs).map(([k, v]) => `${k}: ${v}`).join(' · ') : ''}</Td>
+                <Td className="max-w-[16rem] text-xs">{a.specs && typeof a.specs === 'object' ? Object.entries(a.specs).map(([k, v]) => `${specLabel(k)}: ${v}`).join(' · ') : ''}</Td>
                 <Td>{a.locationCode || '—'}<div className="text-xs text-muted-foreground">{a.job?.jobNumber}</div>{a.lotLine?.lot ? <RowLink href={`/dashboard/platform/lots/${a.lotLine.lot.id}`}>{a.lotLine.lot.lotNumber}</RowLink> : null}</Td>
                 <Td className="text-right tabular-nums">{a.fairMarketValueMinor ? usd(a.fairMarketValueMinor) : '—'}</Td>
               </tr>

@@ -62,6 +62,33 @@ test('open auction: increment enforced, outbid notice, soft close extends', { sk
   assert.match(outbid[0].body, /the high bid is now \$1,050\.00\./, 'money in notices uses the store currency and separators')
 })
 
+test('manifest and bid sheet export plain spec headers, and a filled bid sheet reads back', { skip }, async () => {
+  const XLSX = require('xlsx')
+  const sheets = require(path.join(root, 'features/keystone/domain/sheets.ts'))
+  const lot = await f.lot(ctx.prisma, { bidBasis: 'per_line' })
+  await ctx.prisma.lotLine.update({ where: { id: lot.lines[0].id }, data: { specs: { cpu: 'i5-1145G7', ramGb: 16, storageGb: 256 } } })
+  const { user } = await f.buyer(ctx.prisma)
+  const buyerCtx = await ctx.as(user.id)
+  const read = (file) => XLSX.utils.sheet_to_json(XLSX.read(Buffer.from(file.base64, 'base64')).Sheets[XLSX.read(Buffer.from(file.base64, 'base64')).SheetNames[0]], { header: 1, defval: '' })
+  const manifest = read(await sheets.downloadLotManifest(buyerCtx, { lotNumber: lot.lotNumber }))
+  assert.deepEqual(manifest[2].slice(6, 9), ['Processor', 'RAM (GB)', 'Storage (GB)'])
+  assert.ok(!manifest[2].some((h) => /^(cpu|ramGb|storageGb)$/.test(h)), 'no raw keys in the header')
+  const sheet = await sheets.downloadBidSheet(buyerCtx, { lotNumber: lot.lotNumber })
+  const book = XLSX.read(Buffer.from(sheet.base64, 'base64'))
+  const ws = book.Sheets[book.SheetNames[0]]
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' })
+  const header = rows[2]
+  assert.deepEqual(header.slice(5, 8), ['Processor', 'RAM (GB)', 'Storage (GB)'])
+  const priceCol = header.findIndex((h) => String(h).startsWith('Unit price'))
+  assert.equal(header[priceCol], 'Unit price (USD)')
+  assert.equal(ws[XLSX.utils.encode_cell({ r: 3, c: priceCol + 1 })].f, `${XLSX.utils.encode_col(priceCol - 1)}4*${XLSX.utils.encode_col(priceCol)}4`, 'line total multiplies quantity by price')
+  ws[XLSX.utils.encode_cell({ r: 3, c: priceCol })] = { t: 'n', v: 125 }
+  const filled = Buffer.from(XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }))
+  const checked = await sheets.checkBidSheet(buyerCtx, { lotNumber: lot.lotNumber, file: { filename: 'bids.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', base64: filled.toString('base64') } })
+  assert.deepEqual(checked.problems, [])
+  assert.deepEqual(checked.lines.map((l) => [l.lotLineId, l.unitPriceMinor]), [[lot.lines[0].id, 12500]])
+})
+
 test('late bid is refused once the close has passed, even before the clock runs', { skip }, async () => {
   const lot = await f.lot(ctx.prisma)
   const { user } = await f.buyer(ctx.prisma)
