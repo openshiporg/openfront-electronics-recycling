@@ -6,7 +6,7 @@ import { seedStarterRecords } from './starterRecords'
 // §4.11. Seeds everything a recycler needs on day one. Safe to run twice: every
 // step looks for what is already there and only adds what is missing.
 
-const ROLES: Array<{ name: string; permissions: RolePermission[] }> = [
+export const ROLES: Array<{ name: string; permissions: RolePermission[] }> = [
   { name: 'Owner', permissions: [...ROLE_PERMISSIONS] },
   { name: 'Sales Manager', permissions: ['canAccessDashboard', 'canManageBuyers', 'canManageLots', 'canAwardLots', 'canViewReports'] },
   { name: 'Client Manager', permissions: ['canAccessDashboard', 'canManageClients', 'canManageJobs', 'canManageSettlements', 'canViewReports'] },

@@ -124,7 +124,7 @@ const permissionFields = Object.fromEntries(
 export const Role = list({
   access: {
     operation: {
-      query: isSignedIn,
+      query: can('canAccessDashboard'),
       create: permissions.canManageUsers,
       update: permissions.canManageUsers,
       delete: permissions.canManageUsers,

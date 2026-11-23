@@ -44,6 +44,7 @@ export async function staffInvoicePdf(context: Ctx, args: { invoiceId: string })
 async function orderDocumentPdf(db: Tx, orderId: string, kind: 'packing_list' | 'bill_of_lading') {
   const settings = await getSettings(db)
   const order = await db.order.findUnique({ where: { id: orderId }, include: { lines: { orderBy: { lineNumber: 'asc' } }, company: true, lot: { include: { facility: true } } } })
+  if (!order) fail('Order not found.')
   const f = order.lot?.facility
   const from = f ? [f.name, f.addressLine1, [f.city, f.region, f.postalCode].filter(Boolean).join(' '), f.countryCode].filter(Boolean).join('\n') : settings.businessName
   const to = [order.company.legalName, order.company.addressLine1, [order.company.city, order.company.region, order.company.postalCode].filter(Boolean).join(' '), order.company.countryCode].filter(Boolean).join('\n')

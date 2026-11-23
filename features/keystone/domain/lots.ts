@@ -195,7 +195,7 @@ export async function publishLot(context: Ctx, args: { lotId: string }) {
 
 export async function publishSaleEvent(context: Ctx, args: { saleEventId: string; announce?: boolean }) {
   const staffId = context.session!.itemId
-  const event = await context.prisma.saleEvent.findUnique({ where: { id: args.saleEventId }, include: { lots: { select: { id: true, status: true } } } })
+  const event = await context.prisma.saleEvent.findUnique({ where: { id: str(args.saleEventId, 60) }, include: { lots: { select: { id: true, status: true } } } })
   if (!event) fail('Sale event not found.')
   if (event.status === 'closed') fail('This sale event is closed.')
   const drafts = event.lots.filter((l: any) => l.status === 'draft')
@@ -749,6 +749,7 @@ export async function removeAssetsFromLot(context: Ctx, args: { lotId: string; a
 // ---------------------------------------------------------------- bid board (S11)
 
 export async function lotBidBoard(context: Ctx, args: { lotId: string }) {
+  if (!str(args.lotId, 60)) fail('Choose a lot.')
   await advanceLotClock(context, args.lotId)
   const lot = await context.prisma.lot.findUnique({ where: { id: str(args.lotId, 60) }, include: { lines: { orderBy: { lineNumber: 'asc' } } } })
   if (!lot) fail('Lot not found.')

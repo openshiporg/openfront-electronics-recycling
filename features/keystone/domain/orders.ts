@@ -280,7 +280,7 @@ export async function setDockAppointmentStatus(context: Ctx, args: { appointment
 
 /** Free and taken slots for a facility on a day. */
 export async function dockDay(context: Ctx, args: { facilityId: string; date: string }) {
-  const facility = await context.prisma.facility.findUnique({ where: { id: args.facilityId } })
+  const facility = await context.prisma.facility.findUnique({ where: { id: str(args.facilityId, 60) } })
   if (!facility) fail('Facility not found.')
   const day = /^\d{4}-\d{2}-\d{2}$/.test(args.date) ? args.date : new Date().toISOString().slice(0, 10)
   const tz = (await getSettings(context.prisma)).timezone
