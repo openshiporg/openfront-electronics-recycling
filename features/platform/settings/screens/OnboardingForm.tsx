@@ -35,7 +35,9 @@ export function OnboardingForm({ defaults }: { defaults: Defaults }) {
     start(async () => {
       const r = await runOperation('runElectronicsRecyclingOnboarding', input)
       if (!r.success) { setError(r.error || 'Onboarding did not finish.'); return }
-      setResult(r.data); router.refresh()
+      setResult(r.data)
+      window.dispatchEvent(new Event('recycling-setup-complete'))
+      router.refresh()
     })
   }
 
@@ -47,8 +49,8 @@ export function OnboardingForm({ defaults }: { defaults: Defaults }) {
         <Notice tone="status">Done. {counts.length ? `Added ${counts.map(([k, v]) => `${v} ${k}`).join(', ')}.` : 'Everything was already set up.'}</Notice>
         {starter ? (
           <div className="grid gap-2 rounded-[6px] border p-4 text-sm">
-            <p className="font-medium">Starter records{starter.skipped ? ' already existed' : ' added'}.</p>
-            {starter.password ? <p>Password for every starter login (shown once, copy it now): <span className="select-all font-mono">{starter.password}</span></p> : null}
+            <p className="font-medium">Business records{starter.skipped ? ' already existed' : ' added'}.</p>
+            {starter.password ? <p>Password for the new portal accounts (shown once, copy it now): <span className="select-all font-mono">{starter.password}</span></p> : null}
             <ul className="grid gap-1">{(starter.logins ?? []).map((l: any) => <li key={l.email}><span className="font-mono text-xs">{l.email}</span> · {l.portal} · {l.organisation}{l.role ? ` · ${l.role}` : ''}</li>)}</ul>
             {starter.records?.note ? <p className="text-muted-foreground">{String(starter.records.note)}</p> : null}
           </div>
@@ -72,8 +74,8 @@ export function OnboardingForm({ defaults }: { defaults: Defaults }) {
         <label className="grid gap-1 text-sm sm:col-span-2">Bank transfer instructions<textarea name="wireInstructions" rows={3} defaultValue={defaults.wireInstructions} className="rounded-[6px] border bg-background px-3 py-2 text-sm" /></label>
       </fieldset>
 
-      <fieldset className="grid gap-3 sm:grid-cols-2">
-        <legend className="mb-2 text-sm font-semibold">Main facility{defaults.hasFacility ? ' (you already have one; this is used only if none exists)' : ''}</legend>
+      {defaults.hasFacility ? <p className="text-sm text-muted-foreground">Your receiving facility is already set up. Manage its address and dock hours under Facilities.</p> : <fieldset className="grid gap-3 sm:grid-cols-2">
+        <legend className="mb-2 text-sm font-semibold">Main facility</legend>
         <label className="grid gap-1 text-sm">Name<Input name="facility.name" /></label>
         <label className="grid gap-1 text-sm">Short code<Input name="facility.code" placeholder="MAIN" /></label>
         <label className="grid gap-1 text-sm sm:col-span-2">Address<Input name="facility.addressLine1" required={!defaults.hasFacility} /></label>
@@ -82,7 +84,7 @@ export function OnboardingForm({ defaults }: { defaults: Defaults }) {
         <label className="grid gap-1 text-sm">Postal code<Input name="facility.postalCode" required={!defaults.hasFacility} /></label>
         <label className="grid gap-1 text-sm">Country<Input name="facility.countryCode" defaultValue="US" /></label>
         <label className="grid gap-1 text-sm">Phone<Input name="facility.phone" /></label>
-      </fieldset>
+      </fieldset>}
 
       <fieldset className="grid gap-2">
         <legend className="mb-2 text-sm font-semibold">Certifications you hold</legend>
@@ -103,10 +105,10 @@ export function OnboardingForm({ defaults }: { defaults: Defaults }) {
       </fieldset>
 
       <fieldset className="grid gap-2">
-        <legend className="mb-2 text-sm font-semibold">Starter records</legend>
+        <legend className="mb-2 text-sm font-semibold">Business records and portal accounts</legend>
         <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="starter" className="mt-1" />
-          <span>Also add the starter clients, buyers, jobs, lots and a completed sale (§4.11), with logins for each portal, dated over the last two weeks.{defaults.hasStarter ? ' They already exist; running again changes nothing.' : ''}</span></label>
-        <label className="grid max-w-sm gap-1 text-sm">Starter login password (optional)<Input name="starterPassword" type="password" minLength={10} placeholder="Generated if empty" /></label>
+          <span>Add clients, buyers, jobs, lots and a completed sale, with accounts for each portal. These are real business records, not a separate mode. Only add them if they belong in this business.{defaults.hasStarter ? ' They already exist; running again changes nothing.' : ''}</span></label>
+        <label className="grid max-w-sm gap-1 text-sm">New portal account password (optional)<Input name="starterPassword" type="password" minLength={10} placeholder="Generated if empty" /></label>
       </fieldset>
 
       {error ? <Notice tone="alert">{error}</Notice> : null}

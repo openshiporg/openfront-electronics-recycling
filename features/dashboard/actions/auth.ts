@@ -110,6 +110,22 @@ export async function createInitialUser(
   }
 }
 
+/** Keep creation and authentication in one server action: a second request can be
+ * redirected by the first-run middleware once the owner exists. */
+export async function createInitialOwner(
+  prevState: { message: string | null; formData: { name: string; email: string } },
+  formData: FormData
+) {
+  const result = await createInitialUser(prevState, formData);
+  if ('message' in result) return result;
+  if (!result.data?.authenticate?.item?.id) {
+    return { message: INITIAL_USER_ERROR, formData: result.formData };
+  }
+  formData.set('from', '/dashboard/platform/onboarding');
+  const signedIn = await signIn({ message: null, formData: { email: result.formData.email } }, formData);
+  return { message: signedIn.message, formData: result.formData };
+}
+
 export async function resetPassword(
   prevState: { message: string | null; success: string | null; formData: { email: string } },
   formData: FormData,
