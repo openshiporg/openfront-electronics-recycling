@@ -43,8 +43,8 @@ export function ReceiveForm({ containers, jobs, defaultLocation }: { containers:
       )) : null}
       <label className="grid gap-1 text-sm">Seal on arrival<Input value={seal} onChange={(e) => setSeal(e.target.value)} placeholder="Leave blank if no seal" /></label>
       <div className="grid grid-cols-2 gap-2">
-        <label className="grid gap-1 text-sm">Gross weight<Input inputMode="decimal" value={gross} onChange={(e) => setGross(e.target.value)} /></label>
-        <label className="grid gap-1 text-sm">Tare<Input inputMode="decimal" value={tare} onChange={(e) => setTare(e.target.value)} /></label>
+        <label className="grid gap-1 text-sm">Gross weight (lb)<Input inputMode="decimal" value={gross} onChange={(e) => setGross(e.target.value)} /></label>
+        <label className="grid gap-1 text-sm">Tare (lb)<Input inputMode="decimal" value={tare} onChange={(e) => setTare(e.target.value)} /></label>
       </div>
       <label className="grid gap-1 text-sm">Put away at<Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Bay or rack" /></label>
       {message ? <Notice tone={message.tone}>{message.text}</Notice> : null}

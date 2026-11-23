@@ -44,14 +44,25 @@ export default async function ManifestImportsPage({ searchParams }: { searchPara
                     <ManifestMapper importId={imp.id} headers={imp.headers ?? []} mapping={imp.mapping ?? {}} sheetNames={imp.sheetNames ?? [imp.sheetName]} sheetName={imp.sheetName} headerRow={imp.headerRow ?? 0} />
                   ) : null}
                   {rows.length ? (
-                    <DataTable label="Checked rows" head={[{ label: 'Row' }, { label: 'Item' }, { label: 'Qty', className: 'text-right' }, { label: 'Grade' }, { label: 'Result' }]}>
+                    <DataTable stack label="Checked rows" head={[{ label: 'Row' }, { label: 'Item' }, { label: 'Qty', className: 'text-right' }, { label: 'Grade' }, { label: 'Result' }]}>
                       {rows.slice(0, 200).map((r: any) => (
                         <tr key={r.rowNumber}>
                           <Td className="tabular-nums">{r.rowNumber}</Td>
                           <Td>{[r.line?.manufacturer, r.line?.model].filter(Boolean).join(' ')}<div className="text-xs text-muted-foreground">{r.line?.description}</div></Td>
                           <Td className="text-right tabular-nums">{r.line?.quantity}</Td>
                           <Td>{[r.line?.cosmeticGrade, r.line?.functionalGrade].filter(Boolean).join(' / ')}</Td>
-                          <Td>{r.valid ? <span className="text-emerald-700 dark:text-emerald-400">Ready</span> : <span className="text-red-600">{(r.errors ?? []).join(' ')}</span>}</Td>
+                          <Td>{r.valid ? <span className="text-emerald-700 dark:text-emerald-400">Ready{r.edited ? ' · corrected' : ''}</span> : <span className="text-red-600">{(r.errors ?? []).join(' ')}</span>}
+                            {imp.status === 'validated' ? <div className="mt-2"><OpDrawer op="editManifestRow" fixed={{ importId: imp.id, rowNumber: r.rowNumber }} title={`Correct row ${r.rowNumber}`} trigger="Correct row" description="Changes this import only; the original spreadsheet is kept unchanged." fields={[
+                              { name: 'line.description', label: 'Description', defaultValue: r.line?.description },
+                              { name: 'line.manufacturer', label: 'Manufacturer', defaultValue: r.line?.manufacturer },
+                              { name: 'line.model', label: 'Model', defaultValue: r.line?.model },
+                              { name: 'line.quantity', label: 'Quantity', type: 'number', required: true, defaultValue: r.line?.quantity },
+                              { name: 'line.category', label: 'Category', defaultValue: r.line?.category },
+                              { name: 'line.cosmeticGrade', label: 'Cosmetic grade', defaultValue: r.line?.cosmeticGrade },
+                              { name: 'line.functionalGrade', label: 'Functional grade', defaultValue: r.line?.functionalGrade },
+                              { name: 'line.notes', label: 'Notes', type: 'textarea', defaultValue: r.line?.notes },
+                            ]} submitLabel="Save correction" /></div> : null}
+                          </Td>
                         </tr>
                       ))}
                     </DataTable>
