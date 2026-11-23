@@ -121,21 +121,22 @@ async function markOverdueInvoices(context: Pick<Ctx, 'prisma'>, now: Date) {
   }
 }
 
-async function sendLotReminders(context: Pick<Ctx, 'prisma'>, now: Date) {
+export async function sendLotReminders(context: Pick<Ctx, 'prisma'>, now: Date) {
   const windows: Array<{ hours: number; field: 'reminder24SentAt' | 'reminder2SentAt' }> = [{ hours: 24, field: 'reminder24SentAt' }, { hours: 2, field: 'reminder2SentAt' }]
   for (const w of windows) {
     const lots = await context.prisma.lot.findMany({ where: { status: 'open', [w.field]: null, closesAt: { lte: new Date(now.getTime() + w.hours * 3_600_000), gt: now } }, select: { id: true, lotNumber: true, title: true, categoryId: true }, take: 50 })
     for (const lot of lots) {
-      const claimed = await context.prisma.lot.updateMany({ where: { id: lot.id, [w.field]: null }, data: { [w.field]: now } })
-      if (!claimed.count) continue
       await context.prisma.$transaction(async (tx: Tx) => {
+        // Claim and notices commit together. Concurrent clocks wait on this row;
+        // a failed delivery rolls the claim back so the next clock can retry it.
+        const claimed = await tx.lot.updateMany({ where: { id: lot.id, status: 'open', [w.field]: null }, data: { [w.field]: now } })
+        if (!claimed.count) return
         const bidders = await tx.bid.findMany({ where: { lotId: lot.id }, select: { companyId: true }, distinct: ['companyId'] })
         const bidderIds = new Set(bidders.map((b: any) => b.companyId))
-        const interested = await tx.buyerCompany.findMany({ where: { status: 'approved', ...(lot.categoryId ? { categoriesOfInterest: { some: { id: lot.categoryId } } } : {}) }, select: { id: true } })
-        const users: string[] = []
-        for (const c of interested) if (!bidderIds.has(c.id)) users.push(...(await companyUsers(tx, c.id)))
+        const recipients = await tx.user.findMany({ where: { isActive: true, buyerCompany: { status: 'approved', id: { notIn: [...bidderIds] }, ...(lot.categoryId ? { categoriesOfInterest: { some: { id: lot.categoryId } } } : {}) } }, select: { id: true } })
+        const users = recipients.map((u: any) => u.id)
         await notify(tx, { userIds: users, type: 'lot_closing', title: `${lot.lotNumber} closes in ${w.hours} hour${w.hours === 1 ? '' : 's'}`, body: `${lot.title} closes soon.`, link: `/lots/${lot.lotNumber}`, dedupeKey: `lot-reminder-${w.hours}:${lot.id}` })
-      })
+      }, { timeout: 20_000 })
     }
   }
 }

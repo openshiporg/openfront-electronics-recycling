@@ -306,3 +306,19 @@ test('dock: booking snaps to the slot grid, a full slot refuses, cancel frees it
   const again = await orders.bookDockAppointment(staffCtx, { facilityId: facility.id, startsAt: tenTwenty, jobId: job2.id })
   assert.equal(again.status, 'booked')
 })
+
+
+test('concurrent reminder clocks commit one claim with one notice per eligible buyer', { skip }, async () => {
+  const now = new Date()
+  const category = await ctx.prisma.materialCategory.create({ data: { name: `Reminder ${f.key()}`, slug: `reminder-${f.key()}` } })
+  const recipient = await f.buyer(ctx.prisma)
+  await ctx.prisma.buyerCompany.update({ where: { id: recipient.company.id }, data: { categoriesOfInterest: { connect: { id: category.id } } } })
+  const lot = await f.lot(ctx.prisma, { categoryId: category.id, closesAt: new Date(now.getTime() + 12 * 3_600_000) })
+  await Promise.all([lots.sendLotReminders(ctx, now), lots.sendLotReminders(ctx, now)])
+  const saved = await ctx.prisma.lot.findUnique({ where: { id: lot.id } })
+  assert.ok(saved.reminder24SentAt)
+  assert.equal(saved.reminder2SentAt, null)
+  const notices = await ctx.prisma.notification.findMany({ where: { dedupeKey: { startsWith: `lot-reminder-24:${lot.id}:` } } })
+  assert.deepEqual(notices.map((n) => n.userId), [recipient.user.id])
+  assert.equal(notices[0].type, 'lot_closing')
+})
