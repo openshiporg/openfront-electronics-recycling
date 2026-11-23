@@ -22,7 +22,7 @@ function databaseUrl() {
       if (line) base = line.replace(/^\s*(export\s+)?OPENFRONT_SCRATCH_DB_BASE=/, '').trim().replace(/^['"]|['"]$/g, '')
     }
   }
-  return base ? `${base.replace(/\/$/, '')}/${TEST_DB}?connection_limit=12` : null
+  return base ? `${base.replace(/\/$/, '')}/${TEST_DB}?connection_limit=4` : null
 }
 
 const url = databaseUrl()
@@ -39,8 +39,23 @@ async function getTestContext() {
     const { getContext } = require('@keystone-6/core/context')
     const config = require(path.join(root, 'features/keystone/index.ts')).default
     const PrismaModule = require(path.join(root, 'node_modules/.prisma/client'))
-    const base = getContext({ ...config, db: { ...config.db, url } }, PrismaModule)
-    const sudo = base.sudo()
+    // A dedicated one-connection session owns this lock for the entire test file.
+    // All processes targeting this database serialize, including standalone runs.
+    // Separate databases have independent locks. The OS closes the connection on
+    // a crash, so an interrupted runner cannot strand a lock.
+    const lockUrl = new URL(url)
+    lockUrl.searchParams.set('connection_limit', '1')
+    const lock = new PrismaModule.PrismaClient({ datasourceUrl: lockUrl.toString() })
+    let base, sudo
+    try {
+      await lock.$queryRawUnsafe('SELECT true AS locked FROM pg_advisory_lock(72411, 1)')
+      base = getContext({ ...config, db: { ...config.db, url } }, PrismaModule)
+      sudo = base.sudo()
+    } catch (error) {
+      try { if (base) await base.prisma.$disconnect() }
+      finally { await lock.$disconnect() }
+      throw error
+    }
     return {
       base,
       sudo,
@@ -51,9 +66,15 @@ async function getTestContext() {
         const session = { itemId: user.id, listKey: 'User', data: { name: user.name, email: user.email, kind: user.kind, isActive: user.isActive, role: user.role } }
         return base.withSession(session)
       },
-      async disconnect() { await sudo.prisma.$disconnect() },
+      async disconnect() {
+        try { await sudo.prisma.$disconnect() }
+        finally { await lock.$disconnect() }
+      },
     }
-  })()
+  })().catch((error) => {
+    contextPromise = null
+    throw error
+  })
   return contextPromise
 }
 
