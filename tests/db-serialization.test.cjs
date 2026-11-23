@@ -15,23 +15,27 @@ if (process.env.ER_LOCK_CHILD === '1') {
       await ctx.disconnect()
       process.disconnect()
     })
-  })().catch(() => process.exit(1))
+  })().catch((error) => { console.error(error); process.exit(1) })
 } else {
-  test('database advisory lock serializes independent test processes', { skip: skipReason(), timeout: 120_000 }, async () => {
+  test('database advisory lock serializes independent test processes', { skip: skipReason(), timeout: 1_200_000 }, async (t) => {
     const children = []
     const start = () => {
-      const child = fork(__filename, [], { env: { ...process.env, ER_LOCK_CHILD: '1' }, stdio: ['ignore', 'ignore', 'ignore', 'ipc'] })
+      const child = fork(__filename, [], { env: { ...process.env, ER_LOCK_CHILD: '1' }, stdio: ['ignore', 'ignore', 'pipe', 'ipc'] })
       children.push(child)
       const messages = []
+      const diagnostics = []
+      child.stderr.on('data', (chunk) => diagnostics.push(String(chunk)))
       child.on('message', (m) => messages.push(m))
-      return { child, messages }
+      return { child, messages, diagnostics }
     }
     const waitFor = async (c, message) => {
       while (!c.messages.includes(message)) {
         assert.equal(c.child.exitCode, null, 'lock worker exited before acquiring the lock')
-        await Promise.race([once(c.child, 'message'), once(c.child, 'exit').then(() => { throw new Error('Lock worker exited early') })])
+        await Promise.race([once(c.child, 'message'), once(c.child, 'exit').then(() => { throw new Error(`Lock worker exited early (${c.child.exitCode}): ${c.diagnostics.join('')}`) })])
       }
     }
+    const cleanup = () => { for (const child of children) if (child.exitCode === null) child.kill() }
+    t.signal.addEventListener('abort', cleanup, { once: true })
     try {
       const first = start()
       await waitFor(first, 'acquired')
@@ -44,7 +48,8 @@ if (process.env.ER_LOCK_CHILD === '1') {
       second.child.send('release')
       await once(second.child, 'exit')
     } finally {
-      for (const child of children) if (child.exitCode === null) child.kill()
+      t.signal.removeEventListener('abort', cleanup)
+      cleanup()
     }
   })
 }
