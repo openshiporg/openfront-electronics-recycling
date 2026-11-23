@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { createInitialUser, signIn } from "@/features/dashboard/actions";
+import { createInitialOwner } from "@/features/dashboard/actions";
 import { Logo } from "@/features/dashboard/components/Logo";
 
 type ActionState = {
@@ -33,7 +33,7 @@ function SubmitButton() {
       {pending ? (
         <RiLoader2Fill className="size-4 shrink-0 animate-spin" />
       ) : (
-        "Create account"
+        "Create owner account"
       )}
     </Button>
   );
@@ -51,7 +51,7 @@ export function InitPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [state, formAction] = useActionState(
     async (prevState: ActionState, formData: FormData) => {
-      const result = await createInitialUser(prevState, formData);
+      const result = await createInitialOwner(prevState, formData);
 
       if ("message" in result && result.message) {
         return {
@@ -62,17 +62,6 @@ export function InitPage() {
           },
         };
       }
-
-      // If successful, sign in the user
-      await signIn(
-        {
-          message: null,
-          formData: {
-            email: formData.get("email") as string,
-          },
-        },
-        formData
-      );
 
       return {
         message: null,
@@ -92,10 +81,10 @@ export function InitPage() {
           <Logo aria-hidden="true" />
         </div>
         <h1 className="mt-6 text-lg font-semibold text-foreground dark:text-foreground">
-          Create admin account
+          Set up your recycling business
         </h1>
         <p className="mt-2 text-sm text-muted-foreground dark:text-muted-foreground">
-          Set up your admin account to get started.
+          Create the owner account. Next, add your business details and receiving facility.
         </p>
 
         <form action={formAction} className="mt-8 space-y-4">
